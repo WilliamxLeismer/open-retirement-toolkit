@@ -1,0 +1,10 @@
+{
+  "name": "Open Retirement Toolkit",
+  "short_name": "Retirement Toolkit",
+  "description": "Private, local-first retirement planning simulations.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#163f36",
+  "icons": [{"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
