@@ -24,6 +24,7 @@ export const makeScenario = (overrides: Partial<Scenario> = {}): Scenario => ({
   studentT: { degreesOfFreedom: 5 },
   incomeStreams: [],
   oneTimeExpenses: [],
+  dollarView: "nominal",
   updatedAt: "2026-01-01T00:00:00.000Z",
   ...overrides
 });

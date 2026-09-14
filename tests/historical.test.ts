@@ -72,6 +72,7 @@ describe("moving-block bootstrap", () => {
     const expectedEnding = 1000 - Array.from({ length: 12 }, (_, index) => Math.pow(1.01, index + 12)).reduce((a, b) => a + b, 0);
     const result = simulate(scenario);
     expect(result.endingMedian).toBeCloseTo(expectedEnding, 10);
+    expect(result.realPoints.at(-1)?.p50).toBeCloseTo(expectedEnding / Math.pow(1.01, 24), 10);
     expect(result.datasetId).toBe("one-block");
     expect(result.modelId).toBe("historical-moving-block-v1");
   });

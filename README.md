@@ -12,6 +12,8 @@ This project is an independent open-source toolkit inspired by the need for tran
 - Named Social Security, pension, and other income streams with timing, growth, and taxable share
 - One-time inflation-adjustable expenses for medical costs and major purchases
 - 10th, 50th, and 90th percentile projections
+- Nominal and per-trial inflation-adjusted views
+- First-depletion rates, median age, timing bands, and age distribution
 - Named scenarios, autosave, duplication, comparison, and deletion
 - JSON backup import/export, CSV export, and printable reports
 - IndexedDB persistence, installable PWA shell, and offline caching

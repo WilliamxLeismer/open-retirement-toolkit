@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { SimulationResult } from "../src/domain";
-import { compareSimulationResults } from "../src/analysis";
+import { compareSimulationResults, resultInDollarView } from "../src/analysis";
 
 const result = (successRate: number, endingMedian: number): SimulationResult => ({
   points: [],
+  realPoints: [],
   successRate,
   endingMedian,
   trials: 10000,
   seed: 42,
-  engineVersion: "1.4.0",
-  modelId: "normal-v1"
+  engineVersion: "1.5.0",
+  modelId: "normal-v1",
+  depletion: { depletionRate: 0, medianDepletionAge: null, beforeRetirementRate: 0, firstTenRetirementYearsRate: 0, laterRetirementRate: 0, byAge: [] }
 });
 
 describe("simulation comparison", () => {
@@ -28,5 +30,14 @@ describe("simulation comparison", () => {
       result(0.9, 300000),
       { ...result(0.8, 200000), seed: 43 }
     )).toThrow("same seed");
+  });
+
+  it("selects real-dollar points and ending balance without mutating the result", () => {
+    const nominal = { ...result(1, 200), points: [{ age: 60, p10: 100, p50: 200, p90: 300 }], realPoints: [{ age: 60, p10: 80, p50: 160, p90: 240 }] };
+    const real = resultInDollarView(nominal, "real");
+    expect(real.points).toEqual(nominal.realPoints);
+    expect(real.endingMedian).toBe(160);
+    expect(resultInDollarView(nominal, "nominal")).toBe(nominal);
+    expect(nominal.endingMedian).toBe(200);
   });
 });

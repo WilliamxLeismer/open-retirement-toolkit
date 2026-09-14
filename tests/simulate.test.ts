@@ -17,12 +17,25 @@ describe("simulate", () => {
         { age: 61, p10: 103718.41020465917, p50: 117656.84160834819, p90: 132323.16634435693 },
         { age: 62, p10: 92109.88660662538, p50: 109907.9427454746, p90: 135448.62373772575 }
       ],
+      realPoints: [
+        { age: 60, p10: 100000, p50: 100000, p90: 100000 },
+        { age: 61, p10: 103718.41020465917, p50: 117656.84160834819, p90: 132323.16634435693 },
+        { age: 62, p10: 92109.88660662538, p50: 109907.9427454746, p90: 135448.62373772575 }
+      ],
       successRate: 1,
       endingMedian: 109907.9427454746,
       trials: 100,
       seed: 42,
-      engineVersion: "1.4.0",
-      modelId: "normal-v1"
+      engineVersion: "1.5.0",
+      modelId: "normal-v1",
+      depletion: {
+        depletionRate: 0,
+        medianDepletionAge: null,
+        beforeRetirementRate: 0,
+        firstTenRetirementYearsRate: 0,
+        laterRetirementRate: 0,
+        byAge: []
+      }
     });
   });
 

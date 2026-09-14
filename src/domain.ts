@@ -1,4 +1,4 @@
-export const CURRENT_SCENARIO_VERSION = 6 as const;
+export const CURRENT_SCENARIO_VERSION = 7 as const;
 export type ReturnModel = "deterministic" | "normal" | "historical" | "student-t";
 
 export interface StressOverlay {
@@ -42,6 +42,21 @@ export interface OneTimeExpense {
   inflationAdjusted: boolean;
 }
 
+export interface DepletionPoint {
+  age: number;
+  trials: number;
+  rate: number;
+}
+
+export interface DepletionSummary {
+  depletionRate: number;
+  medianDepletionAge: number | null;
+  beforeRetirementRate: number;
+  firstTenRetirementYearsRate: number;
+  laterRetirementRate: number;
+  byAge: DepletionPoint[];
+}
+
 export interface Scenario {
   version: typeof CURRENT_SCENARIO_VERSION;
   id: string;
@@ -66,6 +81,7 @@ export interface Scenario {
   studentT: StudentTSettings;
   incomeStreams: IncomeStream[];
   oneTimeExpenses: OneTimeExpense[];
+  dollarView: "nominal" | "real";
   updatedAt: string;
 }
 
@@ -78,6 +94,7 @@ export interface ResultPoint {
 
 export interface SimulationResult {
   points: ResultPoint[];
+  realPoints: ResultPoint[];
   successRate: number;
   endingMedian: number;
   trials: number;
@@ -85,6 +102,7 @@ export interface SimulationResult {
   engineVersion: string;
   modelId: string;
   datasetId?: string;
+  depletion: DepletionSummary;
 }
 
 export const defaultScenario = (): Scenario => ({
@@ -111,6 +129,7 @@ export const defaultScenario = (): Scenario => ({
   studentT: { degreesOfFreedom: 5 },
   incomeStreams: [],
   oneTimeExpenses: [],
+  dollarView: "nominal",
   updatedAt: new Date().toISOString()
 });
 
@@ -131,6 +150,7 @@ export function validateScenario(s: Scenario): string[] {
   if (typeof value.name !== "string" || !value.name.trim()) errors.push("Give the scenario a name.");
   if (value.model !== "deterministic" && value.model !== "normal" && value.model !== "historical" && value.model !== "student-t") errors.push("Return model is unsupported.");
   if (typeof value.updatedAt !== "string" || !value.updatedAt) errors.push("Updated date is missing.");
+  if (value.dollarView !== "nominal" && value.dollarView !== "real") errors.push("Dollar display must be nominal or real.");
 
   const currentAge = finite("currentAge", "Current age");
   const retirementAge = finite("retirementAge", "Retirement age");

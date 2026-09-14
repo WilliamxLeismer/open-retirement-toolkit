@@ -1,6 +1,6 @@
 import { CURRENT_SCENARIO_VERSION, defaultScenario, validateScenario, type Scenario } from "./domain";
 
-export const CURRENT_BACKUP_VERSION = 6 as const;
+export const CURRENT_BACKUP_VERSION = 7 as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -27,6 +27,7 @@ export function migrateScenario(input: unknown): Scenario {
   if (sourceVersion >= 4 && !("historical" in input)) throw new Error("Scenario is missing historical bootstrap settings.");
   if (sourceVersion >= 5 && !("studentT" in input)) throw new Error("Scenario is missing Student's t settings.");
   if (sourceVersion >= 6 && (!("incomeStreams" in input) || !("oneTimeExpenses" in input))) throw new Error("Scenario is missing cash-flow timeline settings.");
+  if (sourceVersion >= 7 && !("dollarView" in input)) throw new Error("Scenario is missing dollar-view settings.");
 
   const defaults = defaultScenario();
   const migrated = {
@@ -38,6 +39,7 @@ export function migrateScenario(input: unknown): Scenario {
     studentT: sourceVersion < 5 ? defaults.studentT : input.studentT,
     incomeStreams: sourceVersion < 6 ? defaults.incomeStreams : input.incomeStreams,
     oneTimeExpenses: sourceVersion < 6 ? defaults.oneTimeExpenses : input.oneTimeExpenses,
+    dollarView: sourceVersion < 7 ? defaults.dollarView : input.dollarView,
     id: typeof input.id === "string" && input.id ? input.id : defaults.id,
     updatedAt: typeof input.updatedAt === "string" && input.updatedAt ? input.updatedAt : defaults.updatedAt
   } as Scenario;
