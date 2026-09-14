@@ -1,10 +1,23 @@
-export const CURRENT_SCENARIO_VERSION = 3 as const;
-export type ReturnModel = "deterministic" | "normal";
+export const CURRENT_SCENARIO_VERSION = 4 as const;
+export type ReturnModel = "deterministic" | "normal" | "historical";
 
 export interface StressOverlay {
   enabled: boolean;
   age: number;
   loss: number;
+}
+
+export interface HistoricalPoint {
+  date: string;
+  portfolioReturn: number;
+  inflation: number;
+}
+
+export interface HistoricalBootstrapSettings {
+  blockMonths: 12 | 24 | 60;
+  datasetName: string;
+  datasetId: string;
+  rows: HistoricalPoint[];
 }
 
 export interface Scenario {
@@ -27,6 +40,7 @@ export interface Scenario {
   seed: number;
   model: ReturnModel;
   stress: StressOverlay;
+  historical: HistoricalBootstrapSettings;
   updatedAt: string;
 }
 
@@ -44,6 +58,8 @@ export interface SimulationResult {
   trials: number;
   seed: number;
   engineVersion: string;
+  modelId: string;
+  datasetId?: string;
 }
 
 export const defaultScenario = (): Scenario => ({
@@ -66,6 +82,7 @@ export const defaultScenario = (): Scenario => ({
   seed: 20260914,
   model: "normal",
   stress: { enabled: false, age: 65, loss: -0.35 },
+  historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
   updatedAt: new Date().toISOString()
 });
 
@@ -84,7 +101,7 @@ export function validateScenario(s: Scenario): string[] {
   if (value.version !== CURRENT_SCENARIO_VERSION) errors.push("Scenario version is unsupported.");
   if (typeof value.id !== "string" || !value.id) errors.push("Scenario ID is missing.");
   if (typeof value.name !== "string" || !value.name.trim()) errors.push("Give the scenario a name.");
-  if (value.model !== "deterministic" && value.model !== "normal") errors.push("Return model is unsupported.");
+  if (value.model !== "deterministic" && value.model !== "normal" && value.model !== "historical") errors.push("Return model is unsupported.");
   if (typeof value.updatedAt !== "string" || !value.updatedAt) errors.push("Updated date is missing.");
 
   const currentAge = finite("currentAge", "Current age");
@@ -130,6 +147,48 @@ export function validateScenario(s: Scenario): string[] {
       errors.push("Stress loss must be between 0% and 100%.");
     } else if (settings.enabled && settings.loss === 0) {
       errors.push("Enabled stress loss must be greater than 0%.");
+    }
+  }
+
+  const historical = value.historical;
+  if (typeof historical !== "object" || historical === null || Array.isArray(historical)) {
+    errors.push("Historical bootstrap settings are missing.");
+  } else {
+    const settings = historical as unknown as HistoricalBootstrapSettings;
+    if (![12, 24, 60].includes(settings.blockMonths)) errors.push("Historical block length must be 12, 24, or 60 months.");
+    if (!Array.isArray(settings.rows)) {
+      errors.push("Historical dataset rows are missing.");
+    } else if (value.model === "historical") {
+      if (typeof settings.datasetName !== "string" || !settings.datasetName.trim() || typeof settings.datasetId !== "string" || !settings.datasetId.trim()) {
+        errors.push("Import a named historical dataset.");
+      }
+      if (settings.rows.length < settings.blockMonths) errors.push(`Historical dataset needs at least ${settings.blockMonths} monthly rows.`);
+      let previousMonth: number | undefined;
+      for (const [index, point] of settings.rows.entries()) {
+        if (typeof point !== "object" || point === null) {
+          errors.push(`Historical row ${index + 1} is invalid.`);
+          break;
+        }
+        const match = /^(\d{4})-(\d{2})$/.exec(point.date ?? "");
+        const month = match ? Number(match[1]) * 12 + Number(match[2]) - 1 : NaN;
+        if (!match || Number(match[2]) < 1 || Number(match[2]) > 12) {
+          errors.push(`Historical row ${index + 1} needs a YYYY-MM date.`);
+          break;
+        }
+        if (previousMonth !== undefined && month !== previousMonth + 1) {
+          errors.push(`Historical dates must be consecutive; check row ${index + 1}.`);
+          break;
+        }
+        if (!Number.isFinite(point.portfolioReturn) || point.portfolioReturn <= -1 || point.portfolioReturn > 5) {
+          errors.push(`Historical row ${index + 1} has an invalid portfolio return.`);
+          break;
+        }
+        if (!Number.isFinite(point.inflation) || point.inflation <= -1 || point.inflation > 1) {
+          errors.push(`Historical row ${index + 1} has invalid inflation.`);
+          break;
+        }
+        previousMonth = month;
+      }
     }
   }
   return errors;

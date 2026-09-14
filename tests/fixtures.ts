@@ -20,6 +20,7 @@ export const makeScenario = (overrides: Partial<Scenario> = {}): Scenario => ({
   seed: 42,
   model: "deterministic",
   stress: { enabled: false, age: 61, loss: -0.35 },
+  historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
   updatedAt: "2026-01-01T00:00:00.000Z",
   ...overrides
 });

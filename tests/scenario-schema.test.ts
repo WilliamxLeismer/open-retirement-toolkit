@@ -28,7 +28,8 @@ describe("scenario migrations", () => {
     expect(migrateScenario(legacyScenario)).toEqual({
       ...legacyScenario,
       version: CURRENT_SCENARIO_VERSION,
-      stress: { enabled: false, age: 65, loss: -0.35 }
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] }
     });
   });
 
@@ -51,6 +52,15 @@ describe("scenario migrations", () => {
 
   it("rejects a version-three scenario without stress settings", () => {
     expect(() => migrateScenario({ ...legacyScenario, version: 3 })).toThrow("missing stress");
+  });
+
+  it("upgrades a version-three scenario with default historical settings", () => {
+    const migrated = migrateScenario({ ...legacyScenario, version: 3, stress: { enabled: false, age: 65, loss: -0.35 } });
+    expect(migrated.historical.rows).toEqual([]);
+  });
+
+  it("rejects a version-four scenario without historical settings", () => {
+    expect(() => migrateScenario({ ...legacyScenario, version: 4, stress: { enabled: false, age: 65, loss: -0.35 } })).toThrow("missing historical");
   });
 
   it("rejects empty and malformed backups", () => {

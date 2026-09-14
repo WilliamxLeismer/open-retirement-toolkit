@@ -9,7 +9,7 @@ describe("return generators", () => {
       expectedReturn: 0.05,
       volatility: 0.12
     }));
-    expect([generator.nextMonthlyReturn(), generator.nextMonthlyReturn(), generator.nextMonthlyReturn()]).toEqual([
+    expect([generator.nextMonthlyObservation().monthlyReturn, generator.nextMonthlyObservation().monthlyReturn, generator.nextMonthlyObservation().monthlyReturn]).toEqual([
       -0.028955764564766798,
       -0.005291235042319541,
       -0.05962917038623787
@@ -21,6 +21,6 @@ describe("return generators", () => {
       model: "deterministic",
       expectedReturn: 0.05
     }));
-    expect(Math.pow(1 + generator.nextMonthlyReturn(), 12)).toBeCloseTo(1.05, 12);
+    expect(Math.pow(1 + generator.nextMonthlyObservation().monthlyReturn, 12)).toBeCloseTo(1.05, 12);
   });
 });

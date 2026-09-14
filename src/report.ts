@@ -1,4 +1,5 @@
 import type { Scenario, SimulationResult } from "./domain";
+import { getModelManifest } from "./engine/model-manifest";
 
 const csvCell = (value: string | number | boolean) => {
   const text = String(value);
@@ -13,11 +14,13 @@ export function buildResultCsv(
   stressed: SimulationResult,
   baseline?: SimulationResult
 ): string {
+  const manifest = getModelManifest(scenario);
   const rows = [
     row("record_type","key","age","p10","p50","p90","value"),
     row("manifest","scenario_name","","","","",scenario.name),
     row("manifest","engine_version","","","","",stressed.engineVersion),
     row("manifest","model","","","","",scenario.model),
+    row("manifest","model_id","","","","",manifest.id),
     row("manifest","seed","","","","",scenario.seed),
     row("input","stress_enabled","","","","",scenario.stress.enabled),
     row("input","stress_age","","","","",scenario.stress.age),
@@ -25,6 +28,16 @@ export function buildResultCsv(
     row("summary","stressed_success_rate","","","","",stressed.successRate),
     row("summary","stressed_ending_median","","","","",stressed.endingMedian)
   ];
+  if (scenario.model === "historical") {
+    rows.splice(9, 0,
+      row("manifest","dataset_name","","","","",scenario.historical.datasetName),
+      row("manifest","dataset_id","","","","",scenario.historical.datasetId),
+      row("manifest","dataset_start","","","","",scenario.historical.rows[0]?.date ?? ""),
+      row("manifest","dataset_end","","","","",scenario.historical.rows.at(-1)?.date ?? ""),
+      row("input","block_months","","","","",scenario.historical.blockMonths),
+      row("input","replacement_policy","","","","","overlapping blocks sampled with replacement")
+    );
+  }
   if (baseline) {
     rows.push(
       row("summary","baseline_success_rate","","","","",baseline.successRate),
@@ -39,6 +52,9 @@ export function buildResultCsv(
       rows.push(row("timeseries","baseline",point.age,point.p10,point.p50,point.p90,""));
     }
   }
-  rows.push(row("warning","disclaimer","","","","","Hypothetical educational analysis, not financial advice."));
+  rows.push(
+    row("warning","model_limit","","","","",manifest.warning),
+    row("warning","disclaimer","","","","","Hypothetical educational analysis, not financial advice.")
+  );
   return rows.join("\n");
 }

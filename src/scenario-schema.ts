@@ -1,6 +1,6 @@
 import { CURRENT_SCENARIO_VERSION, defaultScenario, validateScenario, type Scenario } from "./domain";
 
-export const CURRENT_BACKUP_VERSION = 3 as const;
+export const CURRENT_BACKUP_VERSION = 4 as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -24,6 +24,7 @@ export function migrateScenario(input: unknown): Scenario {
   const missing = REQUIRED_LEGACY_FIELDS.filter(key => !(key in input));
   if (missing.length) throw new Error("Scenario is missing required fields: " + missing.join(", ") + ".");
   if (sourceVersion >= 3 && !("stress" in input)) throw new Error("Scenario is missing stress overlay settings.");
+  if (sourceVersion >= 4 && !("historical" in input)) throw new Error("Scenario is missing historical bootstrap settings.");
 
   const defaults = defaultScenario();
   const migrated = {
@@ -31,6 +32,7 @@ export function migrateScenario(input: unknown): Scenario {
     ...input,
     version: CURRENT_SCENARIO_VERSION,
     stress: sourceVersion < 3 ? defaults.stress : input.stress,
+    historical: sourceVersion < 4 ? defaults.historical : input.historical,
     id: typeof input.id === "string" && input.id ? input.id : defaults.id,
     updatedAt: typeof input.updatedAt === "string" && input.updatedAt ? input.updatedAt : defaults.updatedAt
   } as Scenario;
