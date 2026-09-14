@@ -1,4 +1,5 @@
 import { defaultScenario, validateScenario, type Scenario, type SimulationResult } from "./domain";
+import { CURRENT_BACKUP_VERSION, migrateBackup } from "./scenario-schema";
 import { deleteScenario, listScenarios, saveScenario } from "./storage";
 
 type Field = { key: keyof Scenario; label: string; type?: "percent"; step?: string; help?: string };
@@ -201,14 +202,12 @@ export class App {
     const url=URL.createObjectURL(new Blob([content],{type}));
     const a=document.createElement("a"); a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url);
   }
-  private exportBackup() { this.download("open-retirement-toolkit-backup.json",JSON.stringify({version:1,exportedAt:new Date().toISOString(),scenarios:this.scenarios},null,2),"application/json"); }
+  private exportBackup() { this.download("open-retirement-toolkit-backup.json",JSON.stringify({version:CURRENT_BACKUP_VERSION,exportedAt:new Date().toISOString(),scenarios:this.scenarios},null,2),"application/json"); }
   private async importBackup(file?:File) {
     if(!file) return;
     try {
-      const parsed=JSON.parse(await file.text());
-      const items:Array<Scenario>=Array.isArray(parsed)?parsed:parsed.scenarios;
-      if(!Array.isArray(items)||items.some(s=>validateScenario(s).length)) throw new Error("The backup contains invalid scenarios.");
-      for(const item of items) await saveScenario({...item,id:item.id||crypto.randomUUID(),updatedAt:new Date().toISOString()});
+      const items=migrateBackup(JSON.parse(await file.text()));
+      for(const item of items) await saveScenario({...item,updatedAt:new Date().toISOString()});
       await this.refresh(items[0]);
     } catch(error) { alert(error instanceof Error?error.message:"Could not import backup."); }
   }

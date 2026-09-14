@@ -1,6 +1,8 @@
+export const CURRENT_SCENARIO_VERSION = 2 as const;
 export type ReturnModel = "deterministic" | "normal";
 
 export interface Scenario {
+  version: typeof CURRENT_SCENARIO_VERSION;
   id: string;
   name: string;
   currentAge: number;
@@ -37,6 +39,7 @@ export interface SimulationResult {
 }
 
 export const defaultScenario = (): Scenario => ({
+  version: CURRENT_SCENARIO_VERSION,
   id: crypto.randomUUID(),
   name: "My retirement plan",
   currentAge: 40,
@@ -59,19 +62,48 @@ export const defaultScenario = (): Scenario => ({
 
 export function validateScenario(s: Scenario): string[] {
   const errors: string[] = [];
-  if (!s.name.trim()) errors.push("Give the scenario a name.");
-  if (s.currentAge < 18 || s.currentAge > 100) errors.push("Current age must be between 18 and 100.");
-  if (s.retirementAge <= s.currentAge || s.retirementAge > 110) errors.push("Retirement age must be after current age.");
-  if (s.endAge <= s.retirementAge || s.endAge > 120) errors.push("Plan-through age must be after retirement age.");
-  for (const [label, value] of [["Starting balance",s.startingBalance],["Annual contribution",s.annualContribution],["Annual spending",s.annualSpending],["Retirement income",s.annualRetirementIncome]] as const) {
-    if (!Number.isFinite(value) || value < 0) errors.push(label + " cannot be negative.");
+  const value = s as unknown as Record<string, unknown>;
+  const finite = (key: keyof Scenario, label: string) => {
+    const candidate = value[key];
+    if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+      errors.push(label + " must be a finite number.");
+      return undefined;
+    }
+    return candidate;
+  };
+
+  if (value.version !== CURRENT_SCENARIO_VERSION) errors.push("Scenario version is unsupported.");
+  if (typeof value.id !== "string" || !value.id) errors.push("Scenario ID is missing.");
+  if (typeof value.name !== "string" || !value.name.trim()) errors.push("Give the scenario a name.");
+  if (value.model !== "deterministic" && value.model !== "normal") errors.push("Return model is unsupported.");
+  if (typeof value.updatedAt !== "string" || !value.updatedAt) errors.push("Updated date is missing.");
+
+  const currentAge = finite("currentAge", "Current age");
+  const retirementAge = finite("retirementAge", "Retirement age");
+  const endAge = finite("endAge", "Plan-through age");
+  if (currentAge !== undefined && (currentAge < 18 || currentAge > 100)) errors.push("Current age must be between 18 and 100.");
+  if (retirementAge !== undefined && currentAge !== undefined && (retirementAge <= currentAge || retirementAge > 110)) errors.push("Retirement age must be after current age.");
+  if (endAge !== undefined && retirementAge !== undefined && (endAge <= retirementAge || endAge > 120)) errors.push("Plan-through age must be after retirement age.");
+
+  for (const [key, label] of [["startingBalance","Starting balance"],["annualContribution","Annual contribution"],["annualSpending","Annual spending"],["annualRetirementIncome","Retirement income"]] as const) {
+    const candidate = finite(key, label);
+    if (candidate !== undefined && candidate < 0) errors.push(label + " cannot be negative.");
   }
-  if (s.expectedReturn < -0.5 || s.expectedReturn > 0.5) errors.push("Expected return must be between -50% and 50%.");
-  if (s.volatility < 0 || s.volatility > 1) errors.push("Volatility must be between 0% and 100%.");
-  if (s.inflation < -0.1 || s.inflation > 0.25) errors.push("Inflation must be between -10% and 25%.");
-  if (s.effectiveTaxRate < 0 || s.effectiveTaxRate >= 1) errors.push("Tax rate must be at least 0% and below 100%.");
-  if (s.taxableWithdrawalShare < 0 || s.taxableWithdrawalShare > 1) errors.push("Taxable withdrawal share must be between 0% and 100%.");
-  if (!Number.isInteger(s.trials) || s.trials < 100 || s.trials > 50000) errors.push("Trials must be an integer from 100 to 50,000.");
-  if (!Number.isInteger(s.seed)) errors.push("Seed must be a whole number.");
+
+  const expectedReturn = finite("expectedReturn", "Expected return");
+  const volatility = finite("volatility", "Volatility");
+  const inflation = finite("inflation", "Inflation");
+  const effectiveTaxRate = finite("effectiveTaxRate", "Tax rate");
+  const taxableWithdrawalShare = finite("taxableWithdrawalShare", "Taxable withdrawal share");
+  const trials = finite("trials", "Trials");
+  const seed = finite("seed", "Seed");
+
+  if (expectedReturn !== undefined && (expectedReturn < -0.5 || expectedReturn > 0.5)) errors.push("Expected return must be between -50% and 50%.");
+  if (volatility !== undefined && (volatility < 0 || volatility > 1)) errors.push("Volatility must be between 0% and 100%.");
+  if (inflation !== undefined && (inflation < -0.1 || inflation > 0.25)) errors.push("Inflation must be between -10% and 25%.");
+  if (effectiveTaxRate !== undefined && (effectiveTaxRate < 0 || effectiveTaxRate >= 1)) errors.push("Tax rate must be at least 0% and below 100%.");
+  if (taxableWithdrawalShare !== undefined && (taxableWithdrawalShare < 0 || taxableWithdrawalShare > 1)) errors.push("Taxable withdrawal share must be between 0% and 100%.");
+  if (trials !== undefined && (!Number.isInteger(trials) || trials < 100 || trials > 50000)) errors.push("Trials must be an integer from 100 to 50,000.");
+  if (seed !== undefined && !Number.isInteger(seed)) errors.push("Seed must be a whole number.");
   return errors;
 }
