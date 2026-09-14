@@ -24,11 +24,18 @@ const legacyScenario = {
 };
 
 describe("scenario migrations", () => {
-  it("upgrades an unversioned scenario without changing its values", () => {
+  it("upgrades an unversioned scenario with a disabled default overlay", () => {
     expect(migrateScenario(legacyScenario)).toEqual({
       ...legacyScenario,
-      version: CURRENT_SCENARIO_VERSION
+      version: CURRENT_SCENARIO_VERSION,
+      stress: { enabled: false, age: 65, loss: -0.35 }
     });
+  });
+
+  it("upgrades a version-two scenario", () => {
+    const migrated = migrateScenario({ ...legacyScenario, version: 2 });
+    expect(migrated.version).toBe(CURRENT_SCENARIO_VERSION);
+    expect(migrated.stress.enabled).toBe(false);
   });
 
   it("imports the original version-one backup format", () => {
@@ -40,6 +47,10 @@ describe("scenario migrations", () => {
   it("rejects future scenario and backup versions", () => {
     expect(() => migrateScenario({ ...legacyScenario, version: CURRENT_SCENARIO_VERSION + 1 })).toThrow("newer version");
     expect(() => migrateBackup({ version: CURRENT_BACKUP_VERSION + 1, scenarios: [legacyScenario] })).toThrow("newer version");
+  });
+
+  it("rejects a version-three scenario without stress settings", () => {
+    expect(() => migrateScenario({ ...legacyScenario, version: 3 })).toThrow("missing stress");
   });
 
   it("rejects empty and malformed backups", () => {

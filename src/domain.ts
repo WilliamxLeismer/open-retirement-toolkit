@@ -1,5 +1,11 @@
-export const CURRENT_SCENARIO_VERSION = 2 as const;
+export const CURRENT_SCENARIO_VERSION = 3 as const;
 export type ReturnModel = "deterministic" | "normal";
+
+export interface StressOverlay {
+  enabled: boolean;
+  age: number;
+  loss: number;
+}
 
 export interface Scenario {
   version: typeof CURRENT_SCENARIO_VERSION;
@@ -20,6 +26,7 @@ export interface Scenario {
   trials: number;
   seed: number;
   model: ReturnModel;
+  stress: StressOverlay;
   updatedAt: string;
 }
 
@@ -36,6 +43,7 @@ export interface SimulationResult {
   endingMedian: number;
   trials: number;
   seed: number;
+  engineVersion: string;
 }
 
 export const defaultScenario = (): Scenario => ({
@@ -57,6 +65,7 @@ export const defaultScenario = (): Scenario => ({
   trials: 10000,
   seed: 20260914,
   model: "normal",
+  stress: { enabled: false, age: 65, loss: -0.35 },
   updatedAt: new Date().toISOString()
 });
 
@@ -105,5 +114,23 @@ export function validateScenario(s: Scenario): string[] {
   if (taxableWithdrawalShare !== undefined && (taxableWithdrawalShare < 0 || taxableWithdrawalShare > 1)) errors.push("Taxable withdrawal share must be between 0% and 100%.");
   if (trials !== undefined && (!Number.isInteger(trials) || trials < 100 || trials > 50000)) errors.push("Trials must be an integer from 100 to 50,000.");
   if (seed !== undefined && !Number.isInteger(seed)) errors.push("Seed must be a whole number.");
+
+  const stress = value.stress;
+  if (typeof stress !== "object" || stress === null || Array.isArray(stress)) {
+    errors.push("Stress overlay settings are missing.");
+  } else {
+    const settings = stress as Record<string, unknown>;
+    if (typeof settings.enabled !== "boolean") errors.push("Stress overlay enabled state is invalid.");
+    if (typeof settings.age !== "number" || !Number.isInteger(settings.age)) {
+      errors.push("Stress-event age must be a whole number.");
+    } else if (settings.enabled && currentAge !== undefined && endAge !== undefined && (settings.age < currentAge || settings.age >= endAge)) {
+      errors.push("Stress-event age must be within the planning horizon.");
+    }
+    if (typeof settings.loss !== "number" || !Number.isFinite(settings.loss) || settings.loss < -1 || settings.loss > 0) {
+      errors.push("Stress loss must be between 0% and 100%.");
+    } else if (settings.enabled && settings.loss === 0) {
+      errors.push("Enabled stress loss must be greater than 0%.");
+    }
+  }
   return errors;
 }

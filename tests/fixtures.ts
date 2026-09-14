@@ -1,0 +1,25 @@
+import { CURRENT_SCENARIO_VERSION, type Scenario } from "../src/domain";
+
+export const makeScenario = (overrides: Partial<Scenario> = {}): Scenario => ({
+  version: CURRENT_SCENARIO_VERSION,
+  id: "test",
+  name: "Test",
+  currentAge: 60,
+  retirementAge: 61,
+  endAge: 62,
+  startingBalance: 100000,
+  annualContribution: 12000,
+  annualSpending: 12000,
+  annualRetirementIncome: 0,
+  expectedReturn: 0,
+  volatility: 0,
+  inflation: 0,
+  effectiveTaxRate: 0,
+  taxableWithdrawalShare: 0,
+  trials: 100,
+  seed: 42,
+  model: "deterministic",
+  stress: { enabled: false, age: 61, loss: -0.35 },
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  ...overrides
+});
