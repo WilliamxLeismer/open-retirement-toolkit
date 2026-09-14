@@ -6,7 +6,7 @@ This project is an independent open-source toolkit inspired by the need for tran
 
 ## Current vertical slice
 
-- Deterministic and seeded Normal Monte Carlo return models
+- Deterministic, seeded Normal Monte Carlo, historical moving-block bootstrap, and fixed-age stress models
 - Monthly accumulation and retirement cash flows
 - Inflation, retirement income, and simplified effective tax assumptions
 - 10th, 50th, and 90th percentile projections
@@ -16,6 +16,18 @@ This project is an independent open-source toolkit inspired by the need for tran
 - No authentication, telemetry, or third-party runtime services
 
 Results are conditional model estimates, not forecasts or financial advice.
+
+### Historical CSV format
+
+Historical bootstrap data is imported and stored locally with its scenario. Use consecutive monthly rows and decimal rates:
+
+```csv
+date,portfolio_return,inflation
+2000-01,0.02,0.002
+2000-02,-0.01,0.001
+```
+
+The toolkit does not bundle market history until redistribution rights and transformations are documented. Imported datasets need at least as many rows as the selected 12, 24, or 60 month block length.
 
 ## Run locally
 
@@ -52,7 +64,7 @@ GitHub Pages hosts the application files. Financial scenarios remain in each use
 
 ## Roadmap
 
-The model architecture will expand to Student's t, Laplace, historical IID bootstrap, and block bootstrap models after the core engine is independently validated. Scenario management and reporting will also receive richer comparison and migration support.
+The next validated model is Student's t. Later candidates include Laplace, historical IID bootstrap, asset-level allocation, and richer scenario comparison.
 
 ## License
 

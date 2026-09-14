@@ -8,7 +8,8 @@ const result = (successRate: number, endingMedian: number): SimulationResult => 
   endingMedian,
   trials: 10000,
   seed: 42,
-  engineVersion: "1.1.0"
+  engineVersion: "1.2.0",
+  modelId: "normal-v1"
 });
 
 describe("simulation comparison", () => {

@@ -1,6 +1,7 @@
 import type { Scenario, SimulationResult } from "../domain";
 import { validateScenario } from "../domain";
 import { createReturnGenerator } from "./returns";
+import { getModelManifest } from "./model-manifest";
 import { applyStressOverlay } from "./stress";
 import { ENGINE_VERSION } from "./version";
 
@@ -18,16 +19,21 @@ export function simulate(scenario: Scenario): SimulationResult {
   const years = scenario.endAge - scenario.currentAge;
   const yearlyBalances = Array.from({ length: years + 1 }, () => [] as number[]);
   const returns = createReturnGenerator(scenario);
+  const manifest = getModelManifest(scenario);
   let survived = 0;
 
   for (let trial = 0; trial < trials; trial++) {
     let balance = scenario.startingBalance;
+    let sampledInflationFactor = 1;
     yearlyBalances[0].push(balance);
     for (let month = 0; month < years * 12; month++) {
       const age = scenario.currentAge + month / 12;
       const yearsElapsed = month / 12;
-      const inflationFactor = Math.pow(1 + scenario.inflation, yearsElapsed);
-      const monthlyReturn = applyStressOverlay(scenario, month, returns.nextMonthlyReturn());
+      const observation = returns.nextMonthlyObservation();
+      const inflationFactor = observation.monthlyInflation === undefined
+        ? Math.pow(1 + scenario.inflation, yearsElapsed)
+        : sampledInflationFactor;
+      const monthlyReturn = applyStressOverlay(scenario, month, observation.monthlyReturn);
       balance *= Math.max(0, 1 + monthlyReturn);
 
       if (age < scenario.retirementAge) {
@@ -37,6 +43,10 @@ export function simulate(scenario: Scenario): SimulationResult {
         const taxDrag = scenario.effectiveTaxRate * scenario.taxableWithdrawalShare;
         const grossWithdrawal = netNeed / Math.max(0.01, 1 - taxDrag);
         balance = Math.max(0, balance - grossWithdrawal / 12);
+      }
+
+      if (observation.monthlyInflation !== undefined) {
+        sampledInflationFactor *= 1 + observation.monthlyInflation;
       }
 
       if ((month + 1) % 12 === 0) yearlyBalances[(month + 1) / 12].push(balance);
@@ -59,6 +69,8 @@ export function simulate(scenario: Scenario): SimulationResult {
     endingMedian: points.at(-1)?.p50 ?? 0,
     trials,
     seed: scenario.seed,
-    engineVersion: ENGINE_VERSION
+    engineVersion: ENGINE_VERSION,
+    modelId: manifest.id,
+    ...(manifest.datasetId ? { datasetId: manifest.datasetId } : {})
   };
 }

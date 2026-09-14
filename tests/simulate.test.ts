@@ -21,7 +21,8 @@ describe("simulate", () => {
       endingMedian: 109907.9427454746,
       trials: 100,
       seed: 42,
-      engineVersion: "1.1.0"
+      engineVersion: "1.2.0",
+      modelId: "normal-v1"
     });
   });
 

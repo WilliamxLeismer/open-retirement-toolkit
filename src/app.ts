@@ -1,6 +1,8 @@
 import { compareSimulationResults } from "./analysis";
 import { defaultScenario, validateScenario, type Scenario, type SimulationResult } from "./domain";
 import { withoutStress } from "./engine/stress";
+import { parseHistoricalCsv } from "./engine/historical";
+import { getModelManifest } from "./engine/model-manifest";
 import { buildResultCsv } from "./report";
 import { CURRENT_BACKUP_VERSION, migrateBackup } from "./scenario-schema";
 import { deleteScenario, listScenarios, saveScenario } from "./storage";
@@ -72,13 +74,24 @@ export class App {
         <main>
           <section class="card setup">
             <div class="section-title"><div><span class="eyebrow">Scenario setup</span><h2><input id="name" class="name-input" value="${escapeHtml(this.scenario.name)}" aria-label="Scenario name"/></h2></div>
-              <select id="model" aria-label="Return model"><option value="normal" ${this.scenario.model==="normal"?"selected":""}>Normal Monte Carlo</option><option value="deterministic" ${this.scenario.model==="deterministic"?"selected":""}>Deterministic</option></select>
+              <select id="model" aria-label="Return model"><option value="normal" ${this.scenario.model==="normal"?"selected":""}>Normal Monte Carlo</option><option value="deterministic" ${this.scenario.model==="deterministic"?"selected":""}>Deterministic</option><option value="historical" ${this.scenario.model==="historical"?"selected":""}>Historical bootstrap</option></select>
             </div>
             <div class="field-grid">${fields.map(field => {
               const raw = this.scenario[field.key] as number;
               const value = field.type==="percent" ? raw*100 : raw;
               return `<label><span>${field.label}</span><input data-field="${field.key}" data-percent="${field.type==="percent"}" type="number" step="${field.step??"any"}" value="${value}"/></label>`;
             }).join("")}</div>
+            <fieldset class="model-box" ${this.scenario.model==="historical"?"":"hidden"}>
+              <legend>Historical moving-block bootstrap</legend>
+              <div class="historical-summary">${this.scenario.historical.rows.length
+                ? `<strong>${escapeHtml(this.scenario.historical.datasetName)}</strong><span>${this.scenario.historical.rows.length} months, ${escapeHtml(this.scenario.historical.rows[0].date)} through ${escapeHtml(this.scenario.historical.rows.at(-1)?.date)}</span>`
+                : "No dataset imported"}</div>
+              <div class="stress-fields">
+                <label><span>Block length</span><select id="block-months"><option value="12" ${this.scenario.historical.blockMonths===12?"selected":""}>12 months</option><option value="24" ${this.scenario.historical.blockMonths===24?"selected":""}>24 months</option><option value="60" ${this.scenario.historical.blockMonths===60?"selected":""}>60 months</option></select></label>
+                <label class="button-label historical-import">Import monthly CSV<input id="historical-import" type="file" accept=".csv,text/csv"/></label>
+              </div>
+              <p class="assumption">Required columns: date,portfolio_return,inflation. Dates must be consecutive YYYY-MM values; returns are decimal monthly rates. Data stays in this scenario and its backups.</p>
+            </fieldset>
             <fieldset class="stress-box">
               <legend>Additional stress overlay</legend>
               <label class="toggle"><input id="stress-enabled" type="checkbox" ${this.scenario.stress.enabled?"checked":""}/> Apply one fixed-age portfolio loss</label>
@@ -115,8 +128,14 @@ export class App {
     });
     this.root.querySelector<HTMLSelectElement>("#model")?.addEventListener("change", e => {
       this.scenario.model = (e.target as HTMLSelectElement).value as Scenario["model"];
+      this.render();
       this.changed();
     });
+    this.root.querySelector<HTMLSelectElement>("#block-months")?.addEventListener("change", e => {
+      this.scenario.historical.blockMonths = Number((e.target as HTMLSelectElement).value) as 12 | 24 | 60;
+      this.changed();
+    });
+    this.root.querySelector<HTMLInputElement>("#historical-import")?.addEventListener("change", e => this.importHistorical((e.target as HTMLInputElement).files?.[0]));
     this.root.querySelector<HTMLInputElement>("#stress-enabled")?.addEventListener("change", e => {
       this.scenario.stress.enabled = (e.target as HTMLInputElement).checked;
       this.root.querySelectorAll<HTMLInputElement>("#stress-age,#stress-loss").forEach(input => input.disabled = !this.scenario.stress.enabled);
@@ -201,9 +220,11 @@ export class App {
     const y=(v:number)=>height-pad-v*(height-pad*2)/max;
     const path=(key:"p10"|"p50"|"p90")=>result.points.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(" ");
     const comparison = baseline ? compareSimulationResults(baseline, result) : undefined;
+    const manifest = getModelManifest(this.scenario);
+    const provenance = manifest.datasetId ? ` Dataset ${escapeHtml(manifest.datasetId)}.` : "";
     const stressMarkup = comparison ? `<section class="stress-comparison"><h3>Additional stress overlay</h3><p>One ${pct.format(Math.abs(this.scenario.stress.loss))} portfolio loss at age ${this.scenario.stress.age}. This is a hypothetical scenario, not an event probability.</p><div class="metrics"><div><span>Baseline success</span><strong>${pct.format(comparison.baselineSuccessRate)}</strong></div><div><span>Stressed success</span><strong>${pct.format(comparison.stressedSuccessRate)}</strong></div><div><span>Success-rate change</span><strong>${pct.format(comparison.successRateDelta)}</strong></div></div></section>` : "";
     return `<div class="metrics"><div><span>Funds last through plan</span><strong>${pct.format(result.successRate)}</strong></div><div><span>Median ending balance</span><strong>${money.format(result.endingMedian)}</strong></div><div><span>Model runs</span><strong>${result.trials.toLocaleString()}</strong></div></div>
-      <p class="assumption">Conditional estimate using the inputs and model above. Engine ${result.engineVersion}. It is not a promise or probability about the real world.</p>
+      <p class="assumption">${escapeHtml(manifest.label)} (${escapeHtml(manifest.id)}). ${escapeHtml(manifest.warning)}${provenance} Engine ${result.engineVersion}. It is not a promise or probability about the real world.</p>
       ${stressMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
         <line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="axis"/>
         <path d="${path("p90")}" class="line high"/><path d="${path("p50")}" class="line median"/><path d="${path("p10")}" class="line low"/>
@@ -249,6 +270,22 @@ export class App {
     if(!this.result)return;
     const csv=buildResultCsv(this.scenario,this.result,this.baselineResult);
     this.download(this.scenario.name.replace(/[^a-z0-9]+/gi,"-").toLowerCase()+".csv",csv,"text/csv");
+  }
+  private async importHistorical(file?: File) {
+    if (!file) return;
+    try {
+      const imported = parseHistoricalCsv(await file.text(), file.name);
+      this.scenario.historical = { ...imported, blockMonths: this.scenario.historical.blockMonths };
+      this.scenario.updatedAt = new Date().toISOString();
+      await saveScenario(this.scenario);
+      this.scenarios = await listScenarios();
+      this.result = undefined;
+      this.baselineResult = undefined;
+      this.render();
+      await this.run();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not import historical data.");
+    }
   }
   private async showCompare() {
     if(this.scenarios.length<2){alert("Create or duplicate another scenario first.");return;}
