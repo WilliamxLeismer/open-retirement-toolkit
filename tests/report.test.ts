@@ -15,12 +15,14 @@ describe("CSV report", () => {
     const csv = buildResultCsv(scenario, stressed, baseline);
 
     expect(csv).toContain('manifest,scenario_name,,,,,"Plan, ""A"""');
-    expect(csv).toContain("manifest,engine_version,,,,,1.4.0");
+    expect(csv).toContain("manifest,engine_version,,,,,1.5.0");
     expect(csv).toContain("manifest,model_id,,,,,deterministic-v1");
     expect(csv).toContain("input,stress_enabled,,,,,true");
     expect(csv).toContain("input,stress_loss,,,,,-0.5");
     expect(csv).toContain("timeseries,stressed,62,");
+    expect(csv).toContain("timeseries,stressed_real,62,");
     expect(csv).toContain("timeseries,baseline,62,");
+    expect(csv).toContain("summary,depletion_rate");
     expect(csv).toContain("Hypothetical educational analysis");
   });
 

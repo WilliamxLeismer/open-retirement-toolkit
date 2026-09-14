@@ -9,6 +9,15 @@ export interface SimulationComparison {
   endingMedianDelta: number;
 }
 
+export function resultInDollarView(result: SimulationResult, view: "nominal" | "real"): SimulationResult {
+  if (view === "nominal") return result;
+  return {
+    ...result,
+    points: result.realPoints,
+    endingMedian: result.realPoints.at(-1)?.p50 ?? 0
+  };
+}
+
 export function compareSimulationResults(
   baseline: SimulationResult,
   stressed: SimulationResult

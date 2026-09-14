@@ -32,7 +32,8 @@ describe("scenario migrations", () => {
       historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
       studentT: { degreesOfFreedom: 5 },
       incomeStreams: [],
-      oneTimeExpenses: []
+      oneTimeExpenses: [],
+      dollarView: "nominal"
     });
   });
 
@@ -105,6 +106,31 @@ describe("scenario migrations", () => {
       historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
       studentT: { degreesOfFreedom: 5 }
     })).toThrow("missing cash-flow timeline");
+  });
+
+  it("upgrades a version-six scenario with the nominal dollar view", () => {
+    const migrated = migrateScenario({
+      ...legacyScenario,
+      version: 6,
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
+      studentT: { degreesOfFreedom: 5 },
+      incomeStreams: [],
+      oneTimeExpenses: []
+    });
+    expect(migrated.dollarView).toBe("nominal");
+  });
+
+  it("rejects a version-seven scenario without dollar-view settings", () => {
+    expect(() => migrateScenario({
+      ...legacyScenario,
+      version: 7,
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
+      studentT: { degreesOfFreedom: 5 },
+      incomeStreams: [],
+      oneTimeExpenses: []
+    })).toThrow("missing dollar-view");
   });
 
   it("rejects empty and malformed backups", () => {

@@ -1,4 +1,4 @@
-import { compareSimulationResults } from "./analysis";
+import { compareSimulationResults, resultInDollarView } from "./analysis";
 import { defaultScenario, validateScenario, type Scenario, type SimulationResult } from "./domain";
 import { withoutStress } from "./engine/stress";
 import { parseHistoricalCsv } from "./engine/historical";
@@ -136,7 +136,7 @@ export class App {
             <button id="run" class="primary" ${errors.length?"disabled":""}>Run simulation</button>
           </section>
           <section class="card results" aria-live="polite">
-            <div class="section-title"><div><span class="eyebrow">Results</span><h2>Portfolio outlook</h2></div><div class="actions"><button id="csv" ${this.result?"":"disabled"}>CSV</button><button id="print">Print</button></div></div>
+            <div class="section-title"><div><span class="eyebrow">Results</span><h2>Portfolio outlook</h2></div><div class="actions"><select id="dollar-view" aria-label="Dollar display"><option value="nominal" ${this.scenario.dollarView==="nominal"?"selected":""}>Nominal dollars</option><option value="real" ${this.scenario.dollarView==="real"?"selected":""}>Today's dollars</option></select><button id="csv" ${this.result?"":"disabled"}>CSV</button><button id="print">Print</button></div></div>
             <div id="result-content">${this.result ? this.resultMarkup(this.result, this.baselineResult, this.modelBaselineResult) : '<div class="loading">Calculating…</div>'}</div>
           </section>
           <section id="compare-panel" class="card" hidden></section>
@@ -210,6 +210,12 @@ export class App {
     this.root.querySelector<HTMLInputElement>("#import")?.addEventListener("change", e => this.importBackup((e.target as HTMLInputElement).files?.[0]));
     this.root.querySelector("#csv")?.addEventListener("click", () => this.exportCsv());
     this.root.querySelector("#print")?.addEventListener("click", () => window.print());
+    this.root.querySelector<HTMLSelectElement>("#dollar-view")?.addEventListener("change", e => {
+      this.scenario.dollarView = (e.target as HTMLSelectElement).value as Scenario["dollarView"];
+      const content = this.root.querySelector("#result-content");
+      if (content && this.result) content.innerHTML = this.resultMarkup(this.result, this.baselineResult, this.modelBaselineResult);
+      this.changed(false);
+    });
     this.root.querySelector("#compare")?.addEventListener("click", () => this.showCompare());
     this.root.querySelectorAll<HTMLElement>("[data-load]").forEach(button => button.addEventListener("click", () => this.load(button.dataset.load!)));
   }
@@ -271,29 +277,36 @@ export class App {
   }
 
   private resultMarkup(result: SimulationResult, baseline?: SimulationResult, modelBaseline?: SimulationResult) {
+    const viewedResult = resultInDollarView(result, this.scenario.dollarView);
+    const viewedBaseline = baseline ? resultInDollarView(baseline, this.scenario.dollarView) : undefined;
+    const viewedModelBaseline = modelBaseline ? resultInDollarView(modelBaseline, this.scenario.dollarView) : undefined;
     const width=760,height=260,pad=34;
-    const max=Math.max(1,...result.points.map(p=>p.p90));
-    const x=(i:number)=>pad+i*(width-pad*2)/Math.max(1,result.points.length-1);
+    const max=Math.max(1,...viewedResult.points.map(p=>p.p90));
+    const x=(i:number)=>pad+i*(width-pad*2)/Math.max(1,viewedResult.points.length-1);
     const y=(v:number)=>height-pad-v*(height-pad*2)/max;
-    const path=(key:"p10"|"p50"|"p90")=>result.points.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(" ");
-    const comparison = baseline ? compareSimulationResults(baseline, result) : undefined;
+    const path=(key:"p10"|"p50"|"p90")=>viewedResult.points.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(" ");
+    const comparison = viewedBaseline ? compareSimulationResults(viewedBaseline, viewedResult) : undefined;
     const manifest = getModelManifest(this.scenario);
     const provenance = manifest.datasetId ? ` Dataset ${escapeHtml(manifest.datasetId)}.` : "";
     const stressMarkup = comparison ? `<section class="stress-comparison"><h3>Additional stress overlay</h3><p>One ${pct.format(Math.abs(this.scenario.stress.loss))} portfolio loss at age ${this.scenario.stress.age}. This is a hypothetical scenario, not an event probability.</p><div class="metrics"><div><span>Baseline success</span><strong>${pct.format(comparison.baselineSuccessRate)}</strong></div><div><span>Stressed success</span><strong>${pct.format(comparison.stressedSuccessRate)}</strong></div><div><span>Success-rate change</span><strong>${pct.format(comparison.successRateDelta)}</strong></div></div></section>` : "";
-    const modelComparison = modelBaseline ? compareSimulationResults(modelBaseline, result) : undefined;
+    const modelComparison = viewedModelBaseline ? compareSimulationResults(viewedModelBaseline, viewedResult) : undefined;
     const modelMarkup = modelComparison ? `<section class="stress-comparison"><h3>Normal-model comparison</h3><p>Same saved plan, seed, trial count, and stress overlay. Model-specific return and inflation behavior remains different; this is not an accuracy ranking.</p><div class="metrics"><div><span>Normal success</span><strong>${pct.format(modelComparison.baselineSuccessRate)}</strong></div><div><span>${escapeHtml(manifest.label)} success</span><strong>${pct.format(modelComparison.stressedSuccessRate)}</strong></div><div><span>Median ending difference</span><strong>${money.format(modelComparison.endingMedianDelta)}</strong></div></div></section>` : "";
     const cashFlowMarkup = this.scenario.incomeStreams.length || this.scenario.oneTimeExpenses.length
       ? `<p class="assumption">Timeline includes ${this.scenario.incomeStreams.length} named income stream(s) and ${this.scenario.oneTimeExpenses.length} one-time expense(s).</p>`
       : "";
-    return `<div class="metrics"><div><span>Funds last through plan</span><strong>${pct.format(result.successRate)}</strong></div><div><span>Median ending balance</span><strong>${money.format(result.endingMedian)}</strong></div><div><span>Model runs</span><strong>${result.trials.toLocaleString()}</strong></div></div>
-      <p class="assumption">${escapeHtml(manifest.label)} (${escapeHtml(manifest.id)}). ${escapeHtml(manifest.warning)}${provenance} Engine ${result.engineVersion}. It is not a promise or probability about the real world.</p>
+    const medianDepletion = result.depletion.medianDepletionAge === null ? "None" : result.depletion.medianDepletionAge.toFixed(1);
+    const depletionRows = result.depletion.byAge.map(point=>`<tr><td>${point.age}</td><td>${point.trials.toLocaleString()}</td><td>${pct.format(point.rate)}</td></tr>`).join("");
+    return `<div class="metrics"><div><span>Funds last through plan</span><strong>${pct.format(result.successRate)}</strong></div><div><span>Median ending balance</span><strong>${money.format(viewedResult.endingMedian)}</strong></div><div><span>Model runs</span><strong>${result.trials.toLocaleString()}</strong></div></div>
+      <div class="depletion-metrics"><div><span>Ever depleted</span><strong>${pct.format(result.depletion.depletionRate)}</strong></div><div><span>Median first-depletion age</span><strong>${medianDepletion}</strong></div><div><span>By retirement</span><strong>${pct.format(result.depletion.beforeRetirementRate)}</strong></div><div><span>First 10 retirement years</span><strong>${pct.format(result.depletion.firstTenRetirementYearsRate)}</strong></div><div><span>Later retirement</span><strong>${pct.format(result.depletion.laterRetirementRate)}</strong></div></div>
+      <p class="assumption">Showing ${this.scenario.dollarView==="real"?"today's dollars using each trial's inflation path":"nominal dollars"}. ${escapeHtml(manifest.label)} (${escapeHtml(manifest.id)}). ${escapeHtml(manifest.warning)}${provenance} Engine ${result.engineVersion}. It is not a promise or probability about the real world.</p>
       ${cashFlowMarkup}${stressMarkup}${modelMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
         <line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="axis"/>
         <path d="${path("p90")}" class="line high"/><path d="${path("p50")}" class="line median"/><path d="${path("p10")}" class="line low"/>
-        <text x="${pad}" y="${height-8}">Age ${result.points[0].age}</text><text x="${width-pad}" y="${height-8}" text-anchor="end">Age ${result.points.at(-1)?.age}</text>
+        <text x="${pad}" y="${height-8}">Age ${viewedResult.points[0].age}</text><text x="${width-pad}" y="${height-8}" text-anchor="end">Age ${viewedResult.points.at(-1)?.age}</text>
       </svg>
       <div class="legend"><span class="p90">90th percentile</span><span class="p50">Median</span><span class="p10">10th percentile</span></div>
-      <details><summary>View annual values</summary><div class="table-wrap"><table><thead><tr><th>Age</th><th>10th percentile</th><th>Median</th><th>90th percentile</th></tr></thead><tbody>${result.points.map(p=>`<tr><td>${p.age}</td><td>${money.format(p.p10)}</td><td>${money.format(p.p50)}</td><td>${money.format(p.p90)}</td></tr>`).join("")}</tbody></table></div></details>`;
+      <details><summary>View annual values</summary><div class="table-wrap"><table><thead><tr><th>Age</th><th>10th percentile</th><th>Median</th><th>90th percentile</th></tr></thead><tbody>${viewedResult.points.map(p=>`<tr><td>${p.age}</td><td>${money.format(p.p10)}</td><td>${money.format(p.p50)}</td><td>${money.format(p.p90)}</td></tr>`).join("")}</tbody></table></div></details>
+      <details><summary>View first-depletion distribution</summary><div class="table-wrap"><table><thead><tr><th>Age</th><th>Trials</th><th>All-trial rate</th></tr></thead><tbody>${depletionRows||'<tr><td colspan="3">No depleted trials</td></tr>'}</tbody></table></div></details>`;
   }
 
   private async refresh(select?: Scenario) {
