@@ -2,6 +2,7 @@ import type { Scenario, SimulationResult } from "../domain";
 import { validateScenario } from "../domain";
 import { createReturnGenerator } from "./returns";
 import { getModelManifest } from "./model-manifest";
+import { oneTimeWithdrawalForMonth, retirementWithdrawalForMonth } from "./cashflows";
 import { applyStressOverlay } from "./stress";
 import { ENGINE_VERSION } from "./version";
 
@@ -39,11 +40,9 @@ export function simulate(scenario: Scenario): SimulationResult {
       if (age < scenario.retirementAge) {
         balance += scenario.annualContribution * inflationFactor / 12;
       } else {
-        const netNeed = Math.max(0, scenario.annualSpending - scenario.annualRetirementIncome) * inflationFactor;
-        const taxDrag = scenario.effectiveTaxRate * scenario.taxableWithdrawalShare;
-        const grossWithdrawal = netNeed / Math.max(0.01, 1 - taxDrag);
-        balance = Math.max(0, balance - grossWithdrawal / 12);
+        balance = Math.max(0, balance - retirementWithdrawalForMonth(scenario, age, inflationFactor));
       }
+      balance = Math.max(0, balance - oneTimeWithdrawalForMonth(scenario, month, inflationFactor));
 
       if (observation.monthlyInflation !== undefined) {
         sampledInflationFactor *= 1 + observation.monthlyInflation;

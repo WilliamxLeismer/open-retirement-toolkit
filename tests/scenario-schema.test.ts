@@ -30,7 +30,9 @@ describe("scenario migrations", () => {
       version: CURRENT_SCENARIO_VERSION,
       stress: { enabled: false, age: 65, loss: -0.35 },
       historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
-      studentT: { degreesOfFreedom: 5 }
+      studentT: { degreesOfFreedom: 5 },
+      incomeStreams: [],
+      oneTimeExpenses: []
     });
   });
 
@@ -81,6 +83,28 @@ describe("scenario migrations", () => {
       stress: { enabled: false, age: 65, loss: -0.35 },
       historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] }
     })).toThrow("missing Student's t");
+  });
+
+  it("upgrades a version-five scenario with an empty cash-flow timeline", () => {
+    const migrated = migrateScenario({
+      ...legacyScenario,
+      version: 5,
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
+      studentT: { degreesOfFreedom: 5 }
+    });
+    expect(migrated.incomeStreams).toEqual([]);
+    expect(migrated.oneTimeExpenses).toEqual([]);
+  });
+
+  it("rejects a version-six scenario without cash-flow timeline settings", () => {
+    expect(() => migrateScenario({
+      ...legacyScenario,
+      version: 6,
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
+      studentT: { degreesOfFreedom: 5 }
+    })).toThrow("missing cash-flow timeline");
   });
 
   it("rejects empty and malformed backups", () => {

@@ -8,7 +8,7 @@ const result = (successRate: number, endingMedian: number): SimulationResult => 
   endingMedian,
   trials: 10000,
   seed: 42,
-  engineVersion: "1.3.0",
+  engineVersion: "1.4.0",
   modelId: "normal-v1"
 });
 
