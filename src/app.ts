@@ -1,4 +1,7 @@
+import { compareSimulationResults } from "./analysis";
 import { defaultScenario, validateScenario, type Scenario, type SimulationResult } from "./domain";
+import { withoutStress } from "./engine/stress";
+import { buildResultCsv } from "./report";
 import { CURRENT_BACKUP_VERSION, migrateBackup } from "./scenario-schema";
 import { deleteScenario, listScenarios, saveScenario } from "./storage";
 
@@ -27,6 +30,7 @@ export class App {
   private scenario = defaultScenario();
   private scenarios: Scenario[] = [];
   private result?: SimulationResult;
+  private baselineResult?: SimulationResult;
   private saveTimer?: number;
   private runNumber = 0;
 
@@ -75,6 +79,15 @@ export class App {
               const value = field.type==="percent" ? raw*100 : raw;
               return `<label><span>${field.label}</span><input data-field="${field.key}" data-percent="${field.type==="percent"}" type="number" step="${field.step??"any"}" value="${value}"/></label>`;
             }).join("")}</div>
+            <fieldset class="stress-box">
+              <legend>Additional stress overlay</legend>
+              <label class="toggle"><input id="stress-enabled" type="checkbox" ${this.scenario.stress.enabled?"checked":""}/> Apply one fixed-age portfolio loss</label>
+              <div class="stress-fields">
+                <label><span>Event age</span><input id="stress-age" type="number" step="1" min="${this.scenario.currentAge}" max="${this.scenario.endAge-1}" value="${this.scenario.stress.age}" ${this.scenario.stress.enabled?"":"disabled"}/></label>
+                <label><span>Portfolio loss</span><input id="stress-loss" type="number" step="1" min="0.1" max="100" value="${Math.abs(this.scenario.stress.loss*100)}" ${this.scenario.stress.enabled?"":"disabled"}/><span class="input-suffix">%</span></label>
+              </div>
+              <p class="assumption">This applies one additional hypothetical loss before that month’s cash flow. It has no assigned probability.</p>
+            </fieldset>
             <div id="errors" class="errors" ${errors.length?"":"hidden"}>${errors.map(e=>`<div>${escapeHtml(e)}</div>`).join("")}</div>
             <button id="run" class="primary" ${errors.length?"disabled":""}>Run simulation</button>
           </section>
@@ -102,6 +115,19 @@ export class App {
     });
     this.root.querySelector<HTMLSelectElement>("#model")?.addEventListener("change", e => {
       this.scenario.model = (e.target as HTMLSelectElement).value as Scenario["model"];
+      this.changed();
+    });
+    this.root.querySelector<HTMLInputElement>("#stress-enabled")?.addEventListener("change", e => {
+      this.scenario.stress.enabled = (e.target as HTMLInputElement).checked;
+      this.root.querySelectorAll<HTMLInputElement>("#stress-age,#stress-loss").forEach(input => input.disabled = !this.scenario.stress.enabled);
+      this.changed();
+    });
+    this.root.querySelector<HTMLInputElement>("#stress-age")?.addEventListener("input", e => {
+      this.scenario.stress.age = Number((e.target as HTMLInputElement).value);
+      this.changed();
+    });
+    this.root.querySelector<HTMLInputElement>("#stress-loss")?.addEventListener("input", e => {
+      this.scenario.stress.loss = -Number((e.target as HTMLInputElement).value) / 100;
       this.changed();
     });
     this.root.querySelector("#run")?.addEventListener("click", () => this.run());
@@ -152,10 +178,15 @@ export class App {
     const content = this.root.querySelector("#result-content");
     if (content) content.innerHTML = '<div class="loading">Running simulation…</div>';
     try {
-      const result = await this.runWorker({...this.scenario});
+      const stressedScenario = { ...this.scenario, stress: { ...this.scenario.stress } };
+      const [result, baseline] = await Promise.all([
+        this.runWorker(stressedScenario),
+        stressedScenario.stress.enabled ? this.runWorker(withoutStress(stressedScenario)) : Promise.resolve(undefined)
+      ]);
       if (currentRun !== this.runNumber) return;
       this.result = result;
-      if (content) content.innerHTML = this.resultMarkup(result);
+      this.baselineResult = baseline;
+      if (content) content.innerHTML = this.resultMarkup(result, baseline);
       const csv = this.root.querySelector<HTMLButtonElement>("#csv");
       if (csv) csv.disabled = false;
     } catch (error) {
@@ -163,15 +194,17 @@ export class App {
     }
   }
 
-  private resultMarkup(result: SimulationResult) {
+  private resultMarkup(result: SimulationResult, baseline?: SimulationResult) {
     const width=760,height=260,pad=34;
     const max=Math.max(1,...result.points.map(p=>p.p90));
     const x=(i:number)=>pad+i*(width-pad*2)/Math.max(1,result.points.length-1);
     const y=(v:number)=>height-pad-v*(height-pad*2)/max;
     const path=(key:"p10"|"p50"|"p90")=>result.points.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(" ");
+    const comparison = baseline ? compareSimulationResults(baseline, result) : undefined;
+    const stressMarkup = comparison ? `<section class="stress-comparison"><h3>Additional stress overlay</h3><p>One ${pct.format(Math.abs(this.scenario.stress.loss))} portfolio loss at age ${this.scenario.stress.age}. This is a hypothetical scenario, not an event probability.</p><div class="metrics"><div><span>Baseline success</span><strong>${pct.format(comparison.baselineSuccessRate)}</strong></div><div><span>Stressed success</span><strong>${pct.format(comparison.stressedSuccessRate)}</strong></div><div><span>Success-rate change</span><strong>${pct.format(comparison.successRateDelta)}</strong></div></div></section>` : "";
     return `<div class="metrics"><div><span>Funds last through plan</span><strong>${pct.format(result.successRate)}</strong></div><div><span>Median ending balance</span><strong>${money.format(result.endingMedian)}</strong></div><div><span>Model runs</span><strong>${result.trials.toLocaleString()}</strong></div></div>
-      <p class="assumption">Conditional estimate using the inputs and model above. It is not a promise or probability about the real world.</p>
-      <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
+      <p class="assumption">Conditional estimate using the inputs and model above. Engine ${result.engineVersion}. It is not a promise or probability about the real world.</p>
+      ${stressMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
         <line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="axis"/>
         <path d="${path("p90")}" class="line high"/><path d="${path("p50")}" class="line median"/><path d="${path("p10")}" class="line low"/>
         <text x="${pad}" y="${height-8}">Age ${result.points[0].age}</text><text x="${width-pad}" y="${height-8}" text-anchor="end">Age ${result.points.at(-1)?.age}</text>
@@ -184,6 +217,7 @@ export class App {
     this.scenarios=await listScenarios();
     if (select) this.scenario=select;
     this.result=undefined;
+    this.baselineResult=undefined;
     this.render();
     await this.run();
   }
@@ -213,8 +247,8 @@ export class App {
   }
   private exportCsv() {
     if(!this.result)return;
-    const rows=["age,p10,p50,p90",...this.result.points.map(p=>[p.age,p.p10,p.p50,p.p90].join(","))];
-    this.download(this.scenario.name.replace(/[^a-z0-9]+/gi,"-").toLowerCase()+".csv",rows.join("\n"),"text/csv");
+    const csv=buildResultCsv(this.scenario,this.result,this.baselineResult);
+    this.download(this.scenario.name.replace(/[^a-z0-9]+/gi,"-").toLowerCase()+".csv",csv,"text/csv");
   }
   private async showCompare() {
     if(this.scenarios.length<2){alert("Create or duplicate another scenario first.");return;}

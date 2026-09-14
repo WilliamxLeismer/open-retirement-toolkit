@@ -1,6 +1,8 @@
 import type { Scenario, SimulationResult } from "../domain";
 import { validateScenario } from "../domain";
 import { createReturnGenerator } from "./returns";
+import { applyStressOverlay } from "./stress";
+import { ENGINE_VERSION } from "./version";
 
 const percentile = (sorted: number[], p: number) => {
   const index = (sorted.length - 1) * p;
@@ -25,7 +27,7 @@ export function simulate(scenario: Scenario): SimulationResult {
       const age = scenario.currentAge + month / 12;
       const yearsElapsed = month / 12;
       const inflationFactor = Math.pow(1 + scenario.inflation, yearsElapsed);
-      const monthlyReturn = returns.nextMonthlyReturn();
+      const monthlyReturn = applyStressOverlay(scenario, month, returns.nextMonthlyReturn());
       balance *= Math.max(0, 1 + monthlyReturn);
 
       if (age < scenario.retirementAge) {
@@ -56,6 +58,7 @@ export function simulate(scenario: Scenario): SimulationResult {
     successRate: survived / trials,
     endingMedian: points.at(-1)?.p50 ?? 0,
     trials,
-    seed: scenario.seed
+    seed: scenario.seed,
+    engineVersion: ENGINE_VERSION
   };
 }
