@@ -109,6 +109,29 @@ export class App {
               </div>
               <p class="assumption">This applies one additional hypothetical loss before that month’s cash flow. It has no assigned probability.</p>
             </fieldset>
+            <fieldset class="timeline-box">
+              <legend>Income and expense timeline</legend>
+              <div class="timeline-heading"><h3>Named retirement income</h3><button id="add-income" type="button">Add income</button></div>
+              <p class="assumption">Use separate streams for Social Security, pensions, or other income. Growth and taxable share are explicit.</p>
+              <div class="timeline-list">${this.scenario.incomeStreams.length ? this.scenario.incomeStreams.map((stream,index)=>`<div class="timeline-item">
+                <label><span>Name</span><input data-income-index="${index}" data-income-field="name" value="${escapeHtml(stream.name)}"/></label>
+                <label><span>Annual amount</span><input type="number" min="0" step="100" data-income-index="${index}" data-income-field="annualAmount" value="${stream.annualAmount}"/></label>
+                <label><span>Start age</span><input type="number" step="1" data-income-index="${index}" data-income-field="startAge" value="${stream.startAge}"/></label>
+                <label><span>End age</span><input type="number" step="1" data-income-index="${index}" data-income-field="endAge" value="${stream.endAge}"/></label>
+                <label><span>Annual growth</span><input type="number" step="0.1" data-percent="true" data-income-index="${index}" data-income-field="annualGrowthRate" value="${stream.annualGrowthRate*100}"/></label>
+                <label><span>Taxable share</span><input type="number" min="0" max="100" step="1" data-percent="true" data-income-index="${index}" data-income-field="taxableShare" value="${stream.taxableShare*100}"/></label>
+                <button type="button" class="quiet danger" data-remove-income="${index}">Remove</button>
+              </div>`).join("") : '<p class="empty-state">No named income streams.</p>'}</div>
+              <div class="timeline-heading"><h3>One-time expenses</h3><button id="add-expense" type="button">Add expense</button></div>
+              <p class="assumption">Use these for medical costs, major purchases, or other known withdrawals.</p>
+              <div class="timeline-list">${this.scenario.oneTimeExpenses.length ? this.scenario.oneTimeExpenses.map((expense,index)=>`<div class="timeline-item expense-item">
+                <label><span>Name</span><input data-expense-index="${index}" data-expense-field="name" value="${escapeHtml(expense.name)}"/></label>
+                <label><span>Amount</span><input type="number" min="0" step="100" data-expense-index="${index}" data-expense-field="amount" value="${expense.amount}"/></label>
+                <label><span>Age</span><input type="number" step="1" data-expense-index="${index}" data-expense-field="age" value="${expense.age}"/></label>
+                <label class="toggle"><input type="checkbox" data-expense-index="${index}" data-expense-field="inflationAdjusted" ${expense.inflationAdjusted?"checked":""}/> Inflation-adjust amount</label>
+                <button type="button" class="quiet danger" data-remove-expense="${index}">Remove</button>
+              </div>`).join("") : '<p class="empty-state">No one-time expenses.</p>'}</div>
+            </fieldset>
             <div id="errors" class="errors" ${errors.length?"":"hidden"}>${errors.map(e=>`<div>${escapeHtml(e)}</div>`).join("")}</div>
             <button id="run" class="primary" ${errors.length?"disabled":""}>Run simulation</button>
           </section>
@@ -161,6 +184,24 @@ export class App {
       this.scenario.stress.loss = -Number((e.target as HTMLInputElement).value) / 100;
       this.changed();
     });
+    this.root.querySelector("#add-income")?.addEventListener("click", () => this.addIncome());
+    this.root.querySelectorAll<HTMLInputElement>("[data-income-index]").forEach(input => input.addEventListener("input", () => {
+      const stream = this.scenario.incomeStreams[Number(input.dataset.incomeIndex)];
+      const key = input.dataset.incomeField as keyof typeof stream;
+      const value = key === "name" ? input.value : Number(input.value) / (input.dataset.percent === "true" ? 100 : 1);
+      (stream as unknown as Record<string, unknown>)[key] = value;
+      this.changed(key !== "name");
+    }));
+    this.root.querySelectorAll<HTMLElement>("[data-remove-income]").forEach(button => button.addEventListener("click", () => this.removeIncome(Number(button.dataset.removeIncome))));
+    this.root.querySelector("#add-expense")?.addEventListener("click", () => this.addExpense());
+    this.root.querySelectorAll<HTMLInputElement>("[data-expense-index]").forEach(input => input.addEventListener("input", () => {
+      const expense = this.scenario.oneTimeExpenses[Number(input.dataset.expenseIndex)];
+      const key = input.dataset.expenseField as keyof typeof expense;
+      const value = key === "name" ? input.value : key === "inflationAdjusted" ? input.checked : Number(input.value);
+      (expense as unknown as Record<string, unknown>)[key] = value;
+      this.changed(key !== "name");
+    }));
+    this.root.querySelectorAll<HTMLElement>("[data-remove-expense]").forEach(button => button.addEventListener("click", () => this.removeExpense(Number(button.dataset.removeExpense))));
     this.root.querySelector("#run")?.addEventListener("click", () => this.run());
     this.root.querySelector("#new")?.addEventListener("click", () => this.createNew());
     this.root.querySelector("#duplicate")?.addEventListener("click", () => this.duplicate());
@@ -241,9 +282,12 @@ export class App {
     const stressMarkup = comparison ? `<section class="stress-comparison"><h3>Additional stress overlay</h3><p>One ${pct.format(Math.abs(this.scenario.stress.loss))} portfolio loss at age ${this.scenario.stress.age}. This is a hypothetical scenario, not an event probability.</p><div class="metrics"><div><span>Baseline success</span><strong>${pct.format(comparison.baselineSuccessRate)}</strong></div><div><span>Stressed success</span><strong>${pct.format(comparison.stressedSuccessRate)}</strong></div><div><span>Success-rate change</span><strong>${pct.format(comparison.successRateDelta)}</strong></div></div></section>` : "";
     const modelComparison = modelBaseline ? compareSimulationResults(modelBaseline, result) : undefined;
     const modelMarkup = modelComparison ? `<section class="stress-comparison"><h3>Normal-model comparison</h3><p>Same saved plan, seed, trial count, and stress overlay. Model-specific return and inflation behavior remains different; this is not an accuracy ranking.</p><div class="metrics"><div><span>Normal success</span><strong>${pct.format(modelComparison.baselineSuccessRate)}</strong></div><div><span>${escapeHtml(manifest.label)} success</span><strong>${pct.format(modelComparison.stressedSuccessRate)}</strong></div><div><span>Median ending difference</span><strong>${money.format(modelComparison.endingMedianDelta)}</strong></div></div></section>` : "";
+    const cashFlowMarkup = this.scenario.incomeStreams.length || this.scenario.oneTimeExpenses.length
+      ? `<p class="assumption">Timeline includes ${this.scenario.incomeStreams.length} named income stream(s) and ${this.scenario.oneTimeExpenses.length} one-time expense(s).</p>`
+      : "";
     return `<div class="metrics"><div><span>Funds last through plan</span><strong>${pct.format(result.successRate)}</strong></div><div><span>Median ending balance</span><strong>${money.format(result.endingMedian)}</strong></div><div><span>Model runs</span><strong>${result.trials.toLocaleString()}</strong></div></div>
       <p class="assumption">${escapeHtml(manifest.label)} (${escapeHtml(manifest.id)}). ${escapeHtml(manifest.warning)}${provenance} Engine ${result.engineVersion}. It is not a promise or probability about the real world.</p>
-      ${stressMarkup}${modelMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
+      ${cashFlowMarkup}${stressMarkup}${modelMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
         <line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="axis"/>
         <path d="${path("p90")}" class="line high"/><path d="${path("p50")}" class="line median"/><path d="${path("p10")}" class="line low"/>
         <text x="${pad}" y="${height-8}">Age ${result.points[0].age}</text><text x="${width-pad}" y="${height-8}" text-anchor="end">Age ${result.points.at(-1)?.age}</text>
@@ -306,6 +350,32 @@ export class App {
     } catch (error) {
       alert(error instanceof Error ? error.message : "Could not import historical data.");
     }
+  }
+  private addIncome() {
+    this.scenario.incomeStreams.push({
+      id: crypto.randomUUID(), name: "Social Security", startAge: this.scenario.retirementAge,
+      endAge: this.scenario.endAge, annualAmount: 24000, annualGrowthRate: this.scenario.inflation, taxableShare: 0.85
+    });
+    this.render();
+    this.changed();
+  }
+  private removeIncome(index: number) {
+    this.scenario.incomeStreams.splice(index, 1);
+    this.render();
+    this.changed();
+  }
+  private addExpense() {
+    this.scenario.oneTimeExpenses.push({
+      id: crypto.randomUUID(), name: "Medical or major expense", age: this.scenario.retirementAge,
+      amount: 25000, inflationAdjusted: false
+    });
+    this.render();
+    this.changed();
+  }
+  private removeExpense(index: number) {
+    this.scenario.oneTimeExpenses.splice(index, 1);
+    this.render();
+    this.changed();
   }
   private async showCompare() {
     if(this.scenarios.length<2){alert("Create or duplicate another scenario first.");return;}

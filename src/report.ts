@@ -47,6 +47,12 @@ export function buildResultCsv(
       row("input","variance_scaling","","","","","sqrt((degrees_of_freedom - 2) / degrees_of_freedom)")
     );
   }
+  for (const [index, stream] of scenario.incomeStreams.entries()) {
+    rows.push(row("input",`income_stream_${index + 1}`,"","","","",JSON.stringify(stream)));
+  }
+  for (const [index, expense] of scenario.oneTimeExpenses.entries()) {
+    rows.push(row("input",`one_time_expense_${index + 1}`,"","","","",JSON.stringify(expense)));
+  }
   if (baseline) {
     rows.push(
       row("summary","baseline_success_rate","","","","",baseline.successRate),

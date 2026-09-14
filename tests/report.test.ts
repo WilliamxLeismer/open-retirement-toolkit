@@ -15,7 +15,7 @@ describe("CSV report", () => {
     const csv = buildResultCsv(scenario, stressed, baseline);
 
     expect(csv).toContain('manifest,scenario_name,,,,,"Plan, ""A"""');
-    expect(csv).toContain("manifest,engine_version,,,,,1.3.0");
+    expect(csv).toContain("manifest,engine_version,,,,,1.4.0");
     expect(csv).toContain("manifest,model_id,,,,,deterministic-v1");
     expect(csv).toContain("input,stress_enabled,,,,,true");
     expect(csv).toContain("input,stress_loss,,,,,-0.5");
@@ -53,5 +53,17 @@ describe("CSV report", () => {
     expect(csv).toContain("manifest,dataset_end,,,,,2000-12");
     expect(csv).toContain("input,block_months,,,,,12");
     expect(csv).toContain("overlapping blocks sampled with replacement");
+  });
+
+  it("exports named income and one-time expense assumptions", () => {
+    const scenario = makeScenario({
+      incomeStreams: [{ id: "pension", name: "Pension", startAge: 61, endAge: 62, annualAmount: 12000, annualGrowthRate: 0.02, taxableShare: 0.5 }],
+      oneTimeExpenses: [{ id: "medical", name: "Medical", age: 61, amount: 5000, inflationAdjusted: true }]
+    });
+    const csv = buildResultCsv(scenario, simulate(scenario));
+    expect(csv).toContain("input,income_stream_1");
+    expect(csv).toContain('""name"":""Pension""');
+    expect(csv).toContain("input,one_time_expense_1");
+    expect(csv).toContain('""name"":""Medical""');
   });
 });

@@ -18,5 +18,7 @@ jobs:
         run: npm ci
       - name: Unit and statistical tests with coverage gates
         run: npm run test:coverage
+      - name: 10,000-trial performance smoke test
+        run: npm run test:performance
       - name: Type-check and production build
         run: npm run build

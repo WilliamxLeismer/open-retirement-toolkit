@@ -9,6 +9,8 @@ This project is an independent open-source toolkit inspired by the need for tran
 - Deterministic, seeded Normal Monte Carlo, historical moving-block bootstrap, Student's t, and fixed-age stress models
 - Monthly accumulation and retirement cash flows
 - Inflation, retirement income, and simplified effective tax assumptions
+- Named Social Security, pension, and other income streams with timing, growth, and taxable share
+- One-time inflation-adjustable expenses for medical costs and major purchases
 - 10th, 50th, and 90th percentile projections
 - Named scenarios, autosave, duplication, comparison, and deletion
 - JSON backup import/export, CSV export, and printable reports
@@ -16,6 +18,8 @@ This project is an independent open-source toolkit inspired by the need for tran
 - No authentication, telemetry, or third-party runtime services
 
 Results are conditional model estimates, not forecasts or financial advice.
+
+Within each month, the engine applies the market return and optional stress overlay, recurring contributions or retirement cash flow, then one-time expenses. Taxes remain a simplified effective-rate model.
 
 ### Historical CSV format
 

@@ -1,4 +1,4 @@
-export const CURRENT_SCENARIO_VERSION = 5 as const;
+export const CURRENT_SCENARIO_VERSION = 6 as const;
 export type ReturnModel = "deterministic" | "normal" | "historical" | "student-t";
 
 export interface StressOverlay {
@@ -24,6 +24,24 @@ export interface StudentTSettings {
   degreesOfFreedom: 3 | 5 | 8 | 30;
 }
 
+export interface IncomeStream {
+  id: string;
+  name: string;
+  startAge: number;
+  endAge: number;
+  annualAmount: number;
+  annualGrowthRate: number;
+  taxableShare: number;
+}
+
+export interface OneTimeExpense {
+  id: string;
+  name: string;
+  age: number;
+  amount: number;
+  inflationAdjusted: boolean;
+}
+
 export interface Scenario {
   version: typeof CURRENT_SCENARIO_VERSION;
   id: string;
@@ -46,6 +64,8 @@ export interface Scenario {
   stress: StressOverlay;
   historical: HistoricalBootstrapSettings;
   studentT: StudentTSettings;
+  incomeStreams: IncomeStream[];
+  oneTimeExpenses: OneTimeExpense[];
   updatedAt: string;
 }
 
@@ -89,6 +109,8 @@ export const defaultScenario = (): Scenario => ({
   stress: { enabled: false, age: 65, loss: -0.35 },
   historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
   studentT: { degreesOfFreedom: 5 },
+  incomeStreams: [],
+  oneTimeExpenses: [],
   updatedAt: new Date().toISOString()
 });
 
@@ -203,6 +225,38 @@ export function validateScenario(s: Scenario): string[] {
     errors.push("Student's t settings are missing.");
   } else if (![3, 5, 8, 30].includes((studentT as unknown as StudentTSettings).degreesOfFreedom)) {
     errors.push("Student's t degrees of freedom must be 3, 5, 8, or 30 and greater than 2.");
+  }
+
+  if (!Array.isArray(value.incomeStreams)) {
+    errors.push("Income streams are missing.");
+  } else {
+    for (const [index, item] of value.incomeStreams.entries()) {
+      const stream = item as unknown as IncomeStream;
+      const label = `Income stream ${index + 1}`;
+      if (!stream || typeof stream !== "object" || typeof stream.id !== "string" || !stream.id || typeof stream.name !== "string" || !stream.name.trim()) {
+        errors.push(`${label} needs an ID and name.`);
+        continue;
+      }
+      if (!Number.isInteger(stream.startAge) || !Number.isInteger(stream.endAge) || stream.startAge < s.currentAge || stream.endAge <= stream.startAge || stream.endAge > s.endAge) errors.push(`${label} ages must be whole years within the plan and end after they start.`);
+      if (!Number.isFinite(stream.annualAmount) || stream.annualAmount < 0) errors.push(`${label} amount cannot be negative.`);
+      if (!Number.isFinite(stream.annualGrowthRate) || stream.annualGrowthRate <= -1 || stream.annualGrowthRate > 1) errors.push(`${label} growth must be above -100% and no more than 100%.`);
+      if (!Number.isFinite(stream.taxableShare) || stream.taxableShare < 0 || stream.taxableShare > 1) errors.push(`${label} taxable share must be between 0% and 100%.`);
+    }
+  }
+  if (!Array.isArray(value.oneTimeExpenses)) {
+    errors.push("One-time expenses are missing.");
+  } else {
+    for (const [index, item] of value.oneTimeExpenses.entries()) {
+      const expense = item as unknown as OneTimeExpense;
+      const label = `One-time expense ${index + 1}`;
+      if (!expense || typeof expense !== "object" || typeof expense.id !== "string" || !expense.id || typeof expense.name !== "string" || !expense.name.trim()) {
+        errors.push(`${label} needs an ID and name.`);
+        continue;
+      }
+      if (!Number.isInteger(expense.age) || expense.age < s.currentAge || expense.age >= s.endAge) errors.push(`${label} age must be a whole year within the plan.`);
+      if (!Number.isFinite(expense.amount) || expense.amount < 0) errors.push(`${label} amount cannot be negative.`);
+      if (typeof expense.inflationAdjusted !== "boolean") errors.push(`${label} inflation setting is invalid.`);
+    }
   }
   return errors;
 }
