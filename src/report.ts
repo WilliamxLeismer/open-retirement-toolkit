@@ -12,7 +12,8 @@ const row = (...values: Array<string | number | boolean>) =>
 export function buildResultCsv(
   scenario: Scenario,
   stressed: SimulationResult,
-  baseline?: SimulationResult
+  baseline?: SimulationResult,
+  modelBaseline?: SimulationResult
 ): string {
   const manifest = getModelManifest(scenario);
   const rows = [
@@ -38,11 +39,28 @@ export function buildResultCsv(
       row("input","replacement_policy","","","","","overlapping blocks sampled with replacement")
     );
   }
+  if (scenario.model === "student-t") {
+    rows.splice(9, 0,
+      row("input","degrees_of_freedom","","","","",scenario.studentT.degreesOfFreedom),
+      row("input","return_mean_units","","","","","annual arithmetic mean divided by 12"),
+      row("input","volatility_units","","","","","annual standard deviation divided by square root of 12"),
+      row("input","variance_scaling","","","","","sqrt((degrees_of_freedom - 2) / degrees_of_freedom)")
+    );
+  }
   if (baseline) {
     rows.push(
       row("summary","baseline_success_rate","","","","",baseline.successRate),
       row("summary","baseline_ending_median","","","","",baseline.endingMedian)
     );
+  }
+  if (modelBaseline) {
+    rows.push(
+      row("summary","normal_comparison_success_rate","","","","",modelBaseline.successRate),
+      row("summary","normal_comparison_ending_median","","","","",modelBaseline.endingMedian)
+    );
+    for (const point of modelBaseline.points) {
+      rows.push(row("timeseries","normal_comparison",point.age,point.p10,point.p50,point.p90,""));
+    }
   }
   for (const point of stressed.points) {
     rows.push(row("timeseries","stressed",point.age,point.p10,point.p50,point.p90,""));

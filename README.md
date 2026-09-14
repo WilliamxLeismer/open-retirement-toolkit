@@ -6,7 +6,7 @@ This project is an independent open-source toolkit inspired by the need for tran
 
 ## Current vertical slice
 
-- Deterministic, seeded Normal Monte Carlo, historical moving-block bootstrap, and fixed-age stress models
+- Deterministic, seeded Normal Monte Carlo, historical moving-block bootstrap, Student's t, and fixed-age stress models
 - Monthly accumulation and retirement cash flows
 - Inflation, retirement income, and simplified effective tax assumptions
 - 10th, 50th, and 90th percentile projections
@@ -46,6 +46,12 @@ Run the automated calculation checks:
 npm test
 ```
 
+Run the full local CI-equivalent verification, including enforced coverage thresholds, statistical checks, a 10,000-trial performance smoke test, type checking, and the production build:
+
+```bash
+npm run verify
+```
+
 Create the production site:
 
 ```bash
@@ -62,9 +68,13 @@ https://williamxleismer.github.io/open-retirement-toolkit/
 
 GitHub Pages hosts the application files. Financial scenarios remain in each user's browser storage.
 
+### Student's t calibration
+
+Student's t is an advanced portfolio-wide model with 3, 5, 8, and 30 degree-of-freedom presets. The expected return input is treated as an annual arithmetic mean divided by 12. Annual volatility is divided by the square root of 12, and t samples are scaled by `sqrt((df - 2) / df)` to preserve that configured variance. Returns below -100% deplete the portfolio at the wealth layer.
+
 ## Roadmap
 
-The next validated model is Student's t. Later candidates include Laplace, historical IID bootstrap, asset-level allocation, and richer scenario comparison.
+Later candidates include Laplace, historical IID bootstrap, asset-level allocation, richer income timelines, depletion analysis, real-dollar views, and stronger backup workflows.
 
 ## License
 
