@@ -33,6 +33,7 @@ export class App {
   private scenarios: Scenario[] = [];
   private result?: SimulationResult;
   private baselineResult?: SimulationResult;
+  private modelBaselineResult?: SimulationResult;
   private saveTimer?: number;
   private runNumber = 0;
 
@@ -74,7 +75,7 @@ export class App {
         <main>
           <section class="card setup">
             <div class="section-title"><div><span class="eyebrow">Scenario setup</span><h2><input id="name" class="name-input" value="${escapeHtml(this.scenario.name)}" aria-label="Scenario name"/></h2></div>
-              <select id="model" aria-label="Return model"><option value="normal" ${this.scenario.model==="normal"?"selected":""}>Normal Monte Carlo</option><option value="deterministic" ${this.scenario.model==="deterministic"?"selected":""}>Deterministic</option><option value="historical" ${this.scenario.model==="historical"?"selected":""}>Historical bootstrap</option></select>
+              <select id="model" aria-label="Return model"><option value="normal" ${this.scenario.model==="normal"?"selected":""}>Normal Monte Carlo</option><option value="deterministic" ${this.scenario.model==="deterministic"?"selected":""}>Deterministic</option><option value="historical" ${this.scenario.model==="historical"?"selected":""}>Historical bootstrap</option><option value="student-t" ${this.scenario.model==="student-t"?"selected":""}>Student's t (advanced)</option></select>
             </div>
             <div class="field-grid">${fields.map(field => {
               const raw = this.scenario[field.key] as number;
@@ -92,6 +93,13 @@ export class App {
               </div>
               <p class="assumption">Required columns: date,portfolio_return,inflation. Dates must be consecutive YYYY-MM values; returns are decimal monthly rates. Data stays in this scenario and its backups.</p>
             </fieldset>
+            <fieldset class="model-box" ${this.scenario.model==="student-t"?"":"hidden"}>
+              <legend>Student's t Monte Carlo</legend>
+              <div class="stress-fields">
+                <label><span>Degrees of freedom</span><select id="student-df"><option value="3" ${this.scenario.studentT.degreesOfFreedom===3?"selected":""}>3, very heavy tails</option><option value="5" ${this.scenario.studentT.degreesOfFreedom===5?"selected":""}>5, heavy tails</option><option value="8" ${this.scenario.studentT.degreesOfFreedom===8?"selected":""}>8, moderate tails</option><option value="30" ${this.scenario.studentT.degreesOfFreedom===30?"selected":""}>30, near Normal</option></select></label>
+              </div>
+              <p class="assumption">Advanced experimental model. Expected return is an annual arithmetic mean divided by 12. Annual volatility is scaled to monthly units and preserved after t-distribution scaling. Default: 5 degrees of freedom.</p>
+            </fieldset>
             <fieldset class="stress-box">
               <legend>Additional stress overlay</legend>
               <label class="toggle"><input id="stress-enabled" type="checkbox" ${this.scenario.stress.enabled?"checked":""}/> Apply one fixed-age portfolio loss</label>
@@ -106,7 +114,7 @@ export class App {
           </section>
           <section class="card results" aria-live="polite">
             <div class="section-title"><div><span class="eyebrow">Results</span><h2>Portfolio outlook</h2></div><div class="actions"><button id="csv" ${this.result?"":"disabled"}>CSV</button><button id="print">Print</button></div></div>
-            <div id="result-content">${this.result ? this.resultMarkup(this.result) : '<div class="loading">Calculating…</div>'}</div>
+            <div id="result-content">${this.result ? this.resultMarkup(this.result, this.baselineResult, this.modelBaselineResult) : '<div class="loading">Calculating…</div>'}</div>
           </section>
           <section id="compare-panel" class="card" hidden></section>
         </main>
@@ -133,6 +141,10 @@ export class App {
     });
     this.root.querySelector<HTMLSelectElement>("#block-months")?.addEventListener("change", e => {
       this.scenario.historical.blockMonths = Number((e.target as HTMLSelectElement).value) as 12 | 24 | 60;
+      this.changed();
+    });
+    this.root.querySelector<HTMLSelectElement>("#student-df")?.addEventListener("change", e => {
+      this.scenario.studentT.degreesOfFreedom = Number((e.target as HTMLSelectElement).value) as 3 | 5 | 8 | 30;
       this.changed();
     });
     this.root.querySelector<HTMLInputElement>("#historical-import")?.addEventListener("change", e => this.importHistorical((e.target as HTMLInputElement).files?.[0]));
@@ -198,14 +210,18 @@ export class App {
     if (content) content.innerHTML = '<div class="loading">Running simulation…</div>';
     try {
       const stressedScenario = { ...this.scenario, stress: { ...this.scenario.stress } };
-      const [result, baseline] = await Promise.all([
+      const compareWithNormal = stressedScenario.model === "historical" || stressedScenario.model === "student-t";
+      const normalScenario: Scenario = { ...stressedScenario, model: "normal", stress: { ...stressedScenario.stress } };
+      const [result, baseline, modelBaseline] = await Promise.all([
         this.runWorker(stressedScenario),
-        stressedScenario.stress.enabled ? this.runWorker(withoutStress(stressedScenario)) : Promise.resolve(undefined)
+        stressedScenario.stress.enabled ? this.runWorker(withoutStress(stressedScenario)) : Promise.resolve(undefined),
+        compareWithNormal ? this.runWorker(normalScenario) : Promise.resolve(undefined)
       ]);
       if (currentRun !== this.runNumber) return;
       this.result = result;
       this.baselineResult = baseline;
-      if (content) content.innerHTML = this.resultMarkup(result, baseline);
+      this.modelBaselineResult = modelBaseline;
+      if (content) content.innerHTML = this.resultMarkup(result, baseline, modelBaseline);
       const csv = this.root.querySelector<HTMLButtonElement>("#csv");
       if (csv) csv.disabled = false;
     } catch (error) {
@@ -213,7 +229,7 @@ export class App {
     }
   }
 
-  private resultMarkup(result: SimulationResult, baseline?: SimulationResult) {
+  private resultMarkup(result: SimulationResult, baseline?: SimulationResult, modelBaseline?: SimulationResult) {
     const width=760,height=260,pad=34;
     const max=Math.max(1,...result.points.map(p=>p.p90));
     const x=(i:number)=>pad+i*(width-pad*2)/Math.max(1,result.points.length-1);
@@ -223,9 +239,11 @@ export class App {
     const manifest = getModelManifest(this.scenario);
     const provenance = manifest.datasetId ? ` Dataset ${escapeHtml(manifest.datasetId)}.` : "";
     const stressMarkup = comparison ? `<section class="stress-comparison"><h3>Additional stress overlay</h3><p>One ${pct.format(Math.abs(this.scenario.stress.loss))} portfolio loss at age ${this.scenario.stress.age}. This is a hypothetical scenario, not an event probability.</p><div class="metrics"><div><span>Baseline success</span><strong>${pct.format(comparison.baselineSuccessRate)}</strong></div><div><span>Stressed success</span><strong>${pct.format(comparison.stressedSuccessRate)}</strong></div><div><span>Success-rate change</span><strong>${pct.format(comparison.successRateDelta)}</strong></div></div></section>` : "";
+    const modelComparison = modelBaseline ? compareSimulationResults(modelBaseline, result) : undefined;
+    const modelMarkup = modelComparison ? `<section class="stress-comparison"><h3>Normal-model comparison</h3><p>Same saved plan, seed, trial count, and stress overlay. Model-specific return and inflation behavior remains different; this is not an accuracy ranking.</p><div class="metrics"><div><span>Normal success</span><strong>${pct.format(modelComparison.baselineSuccessRate)}</strong></div><div><span>${escapeHtml(manifest.label)} success</span><strong>${pct.format(modelComparison.stressedSuccessRate)}</strong></div><div><span>Median ending difference</span><strong>${money.format(modelComparison.endingMedianDelta)}</strong></div></div></section>` : "";
     return `<div class="metrics"><div><span>Funds last through plan</span><strong>${pct.format(result.successRate)}</strong></div><div><span>Median ending balance</span><strong>${money.format(result.endingMedian)}</strong></div><div><span>Model runs</span><strong>${result.trials.toLocaleString()}</strong></div></div>
       <p class="assumption">${escapeHtml(manifest.label)} (${escapeHtml(manifest.id)}). ${escapeHtml(manifest.warning)}${provenance} Engine ${result.engineVersion}. It is not a promise or probability about the real world.</p>
-      ${stressMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
+      ${stressMarkup}${modelMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
         <line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="axis"/>
         <path d="${path("p90")}" class="line high"/><path d="${path("p50")}" class="line median"/><path d="${path("p10")}" class="line low"/>
         <text x="${pad}" y="${height-8}">Age ${result.points[0].age}</text><text x="${width-pad}" y="${height-8}" text-anchor="end">Age ${result.points.at(-1)?.age}</text>
@@ -239,6 +257,7 @@ export class App {
     if (select) this.scenario=select;
     this.result=undefined;
     this.baselineResult=undefined;
+    this.modelBaselineResult=undefined;
     this.render();
     await this.run();
   }
@@ -268,7 +287,7 @@ export class App {
   }
   private exportCsv() {
     if(!this.result)return;
-    const csv=buildResultCsv(this.scenario,this.result,this.baselineResult);
+    const csv=buildResultCsv(this.scenario,this.result,this.baselineResult,this.modelBaselineResult);
     this.download(this.scenario.name.replace(/[^a-z0-9]+/gi,"-").toLowerCase()+".csv",csv,"text/csv");
   }
   private async importHistorical(file?: File) {
@@ -281,6 +300,7 @@ export class App {
       this.scenarios = await listScenarios();
       this.result = undefined;
       this.baselineResult = undefined;
+      this.modelBaselineResult = undefined;
       this.render();
       await this.run();
     } catch (error) {

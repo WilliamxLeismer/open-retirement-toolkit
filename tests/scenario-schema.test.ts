@@ -29,7 +29,8 @@ describe("scenario migrations", () => {
       ...legacyScenario,
       version: CURRENT_SCENARIO_VERSION,
       stress: { enabled: false, age: 65, loss: -0.35 },
-      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] }
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
+      studentT: { degreesOfFreedom: 5 }
     });
   });
 
@@ -61,6 +62,25 @@ describe("scenario migrations", () => {
 
   it("rejects a version-four scenario without historical settings", () => {
     expect(() => migrateScenario({ ...legacyScenario, version: 4, stress: { enabled: false, age: 65, loss: -0.35 } })).toThrow("missing historical");
+  });
+
+  it("upgrades a version-four scenario with default Student's t settings", () => {
+    const migrated = migrateScenario({
+      ...legacyScenario,
+      version: 4,
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] }
+    });
+    expect(migrated.studentT.degreesOfFreedom).toBe(5);
+  });
+
+  it("rejects a version-five scenario without Student's t settings", () => {
+    expect(() => migrateScenario({
+      ...legacyScenario,
+      version: 5,
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] }
+    })).toThrow("missing Student's t");
   });
 
   it("rejects empty and malformed backups", () => {

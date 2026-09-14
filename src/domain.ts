@@ -1,5 +1,5 @@
-export const CURRENT_SCENARIO_VERSION = 4 as const;
-export type ReturnModel = "deterministic" | "normal" | "historical";
+export const CURRENT_SCENARIO_VERSION = 5 as const;
+export type ReturnModel = "deterministic" | "normal" | "historical" | "student-t";
 
 export interface StressOverlay {
   enabled: boolean;
@@ -18,6 +18,10 @@ export interface HistoricalBootstrapSettings {
   datasetName: string;
   datasetId: string;
   rows: HistoricalPoint[];
+}
+
+export interface StudentTSettings {
+  degreesOfFreedom: 3 | 5 | 8 | 30;
 }
 
 export interface Scenario {
@@ -41,6 +45,7 @@ export interface Scenario {
   model: ReturnModel;
   stress: StressOverlay;
   historical: HistoricalBootstrapSettings;
+  studentT: StudentTSettings;
   updatedAt: string;
 }
 
@@ -83,6 +88,7 @@ export const defaultScenario = (): Scenario => ({
   model: "normal",
   stress: { enabled: false, age: 65, loss: -0.35 },
   historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
+  studentT: { degreesOfFreedom: 5 },
   updatedAt: new Date().toISOString()
 });
 
@@ -101,7 +107,7 @@ export function validateScenario(s: Scenario): string[] {
   if (value.version !== CURRENT_SCENARIO_VERSION) errors.push("Scenario version is unsupported.");
   if (typeof value.id !== "string" || !value.id) errors.push("Scenario ID is missing.");
   if (typeof value.name !== "string" || !value.name.trim()) errors.push("Give the scenario a name.");
-  if (value.model !== "deterministic" && value.model !== "normal" && value.model !== "historical") errors.push("Return model is unsupported.");
+  if (value.model !== "deterministic" && value.model !== "normal" && value.model !== "historical" && value.model !== "student-t") errors.push("Return model is unsupported.");
   if (typeof value.updatedAt !== "string" || !value.updatedAt) errors.push("Updated date is missing.");
 
   const currentAge = finite("currentAge", "Current age");
@@ -190,6 +196,13 @@ export function validateScenario(s: Scenario): string[] {
         previousMonth = month;
       }
     }
+  }
+
+  const studentT = value.studentT;
+  if (typeof studentT !== "object" || studentT === null || Array.isArray(studentT)) {
+    errors.push("Student's t settings are missing.");
+  } else if (![3, 5, 8, 30].includes((studentT as unknown as StudentTSettings).degreesOfFreedom)) {
+    errors.push("Student's t degrees of freedom must be 3, 5, 8, or 30 and greater than 2.");
   }
   return errors;
 }

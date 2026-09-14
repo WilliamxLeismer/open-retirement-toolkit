@@ -23,6 +23,13 @@ export function getModelManifest(scenario: Scenario): ModelManifest {
       warning: "Resamples the imported history. It cannot represent events or structural changes outside that sample."
     };
   }
+  if (scenario.model === "student-t") {
+    return {
+      id: "student-t-v1",
+      label: "Student's t Monte Carlo",
+      warning: `Advanced model with ${scenario.studentT.degreesOfFreedom} degrees of freedom. It gives extreme returns more weight than the Normal model and is not an industry-standard default. Returns below -100% deplete wealth at the portfolio layer.`
+    };
+  }
   return {
     id: "normal-v1",
     label: "Normal Monte Carlo",

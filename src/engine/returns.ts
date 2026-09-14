@@ -1,6 +1,7 @@
 import type { Scenario } from "../domain";
 import { createMovingBlockGenerator } from "./historical";
 import { mulberry32, normalSample } from "./prng";
+import { standardizedStudentTSample } from "./student-t";
 
 export interface MonthlyObservation {
   monthlyReturn: number;
@@ -20,6 +21,14 @@ export function createReturnGenerator(scenario: Scenario): ReturnGenerator {
   const random = mulberry32(scenario.seed);
   if (scenario.model === "historical") {
     return createMovingBlockGenerator(scenario.historical, random);
+  }
+  if (scenario.model === "student-t") {
+    return {
+      nextMonthlyObservation: () => ({
+        monthlyReturn: scenario.expectedReturn / 12 +
+          scenario.volatility / Math.sqrt(12) * standardizedStudentTSample(random, scenario.studentT.degreesOfFreedom)
+      })
+    };
   }
   return {
     nextMonthlyObservation: () => ({
