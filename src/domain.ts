@@ -1,5 +1,7 @@
-export const CURRENT_SCENARIO_VERSION = 7 as const;
+export const CURRENT_SCENARIO_VERSION = 8 as const;
 export type ReturnModel = "deterministic" | "normal" | "historical" | "student-t";
+export type TaxBucket = "taxable" | "taxDeferred" | "roth";
+export type WithdrawalOrder = "taxable-first" | "tax-deferred-first" | "roth-first";
 
 export interface StressOverlay {
   enabled: boolean;
@@ -42,6 +44,19 @@ export interface OneTimeExpense {
   inflationAdjusted: boolean;
 }
 
+export interface TaxBucketSettings {
+  enabled: boolean;
+  startingBalances: Record<TaxBucket, number>;
+  contributionShares: Record<TaxBucket, number>;
+  withdrawalOrder: WithdrawalOrder;
+  taxableGainShare: number;
+}
+
+export interface TaxBucketSummary {
+  endingMedianBalances: Record<TaxBucket, number>;
+  medianEstimatedLifetimeTax: number;
+}
+
 export interface DepletionPoint {
   age: number;
   trials: number;
@@ -81,6 +96,7 @@ export interface Scenario {
   studentT: StudentTSettings;
   incomeStreams: IncomeStream[];
   oneTimeExpenses: OneTimeExpense[];
+  taxBuckets: TaxBucketSettings;
   dollarView: "nominal" | "real";
   updatedAt: string;
 }
@@ -103,6 +119,7 @@ export interface SimulationResult {
   modelId: string;
   datasetId?: string;
   depletion: DepletionSummary;
+  taxBuckets?: TaxBucketSummary;
 }
 
 export const defaultScenario = (): Scenario => ({
@@ -129,6 +146,13 @@ export const defaultScenario = (): Scenario => ({
   studentT: { degreesOfFreedom: 5 },
   incomeStreams: [],
   oneTimeExpenses: [],
+  taxBuckets: {
+    enabled: false,
+    startingBalances: { taxable: 75000, taxDeferred: 150000, roth: 25000 },
+    contributionShares: { taxable: 0.25, taxDeferred: 0.5, roth: 0.25 },
+    withdrawalOrder: "taxable-first",
+    taxableGainShare: 0.5
+  },
   dollarView: "nominal",
   updatedAt: new Date().toISOString()
 });
@@ -276,6 +300,30 @@ export function validateScenario(s: Scenario): string[] {
       if (!Number.isInteger(expense.age) || expense.age < s.currentAge || expense.age >= s.endAge) errors.push(`${label} age must be a whole year within the plan.`);
       if (!Number.isFinite(expense.amount) || expense.amount < 0) errors.push(`${label} amount cannot be negative.`);
       if (typeof expense.inflationAdjusted !== "boolean") errors.push(`${label} inflation setting is invalid.`);
+    }
+  }
+  const taxBuckets = value.taxBuckets;
+  if (typeof taxBuckets !== "object" || taxBuckets === null || Array.isArray(taxBuckets)) {
+    errors.push("Tax-bucket settings are missing.");
+  } else {
+    const settings = taxBuckets as unknown as TaxBucketSettings;
+    if (typeof settings.enabled !== "boolean") errors.push("Tax-bucket enabled state is invalid.");
+    if (!(["taxable-first", "tax-deferred-first", "roth-first"] as unknown[]).includes(settings.withdrawalOrder)) errors.push("Tax-bucket withdrawal order is unsupported.");
+    if (!Number.isFinite(settings.taxableGainShare) || settings.taxableGainShare < 0 || settings.taxableGainShare > 1) errors.push("Taxable-account gain share must be between 0% and 100%.");
+    const buckets: TaxBucket[] = ["taxable", "taxDeferred", "roth"];
+    const balances = settings.startingBalances;
+    const shares = settings.contributionShares;
+    if (!balances || typeof balances !== "object") errors.push("Starting tax-bucket balances are missing.");
+    if (!shares || typeof shares !== "object") errors.push("Tax-bucket contribution shares are missing.");
+    if (balances && typeof balances === "object") {
+      const values = buckets.map(bucket => balances[bucket]);
+      if (values.some(amount => !Number.isFinite(amount) || amount < 0)) errors.push("Starting tax-bucket balances must be nonnegative finite numbers.");
+      else if (settings.enabled && Math.abs(values.reduce((sum, amount) => sum + amount, 0) - s.startingBalance) > 0.01) errors.push("Starting tax-bucket balances must equal the starting portfolio.");
+    }
+    if (shares && typeof shares === "object") {
+      const values = buckets.map(bucket => shares[bucket]);
+      if (values.some(share => !Number.isFinite(share) || share < 0 || share > 1)) errors.push("Tax-bucket contribution shares must each be between 0% and 100%.");
+      else if (Math.abs(values.reduce((sum, share) => sum + share, 0) - 1) > 0.000001) errors.push("Tax-bucket contribution shares must total 100%.");
     }
   }
   return errors;

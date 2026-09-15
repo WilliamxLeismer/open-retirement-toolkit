@@ -14,6 +14,7 @@ This project is an independent open-source toolkit inspired by the need for tran
 - 10th, 50th, and 90th percentile projections
 - Nominal and per-trial inflation-adjusted views
 - First-depletion rates, median age, timing bands, and age distribution
+- Optional taxable, tax-deferred, and Roth account tracking with fixed withdrawal-order comparisons
 - Named scenarios, autosave, duplication, comparison, and deletion
 - Checksummed JSON backup import/export, optional password-encrypted backups, local recovery points, backup-age warnings, CSV export, and printable reports
 - IndexedDB persistence, installable PWA shell, and offline caching
@@ -81,6 +82,10 @@ Encrypted exports use browser-native AES-256-GCM with a fresh random 16-byte sal
 ### Student's t calibration
 
 Student's t is an advanced portfolio-wide model with 3, 5, 8, and 30 degree-of-freedom presets. The expected return input is treated as an annual arithmetic mean divided by 12. Annual volatility is divided by the square root of 12, and t samples are scaled by `sqrt((df - 2) / df)` to preserve that configured variance. Returns below -100% deplete the portfolio at the wealth layer.
+
+### Tax-bucket scope
+
+Tax-bucket mode tracks taxable, tax-deferred, and Roth balances under one portfolio return. Contributions use explicit account shares. Withdrawals follow a selected fixed order; the effective tax-rate input applies to all tax-deferred withdrawals and the configured gain share of taxable withdrawals. This intentionally simplified model does not implement tax brackets, required minimum distributions, Roth conversions, account-specific holdings, or tax-law optimization.
 
 ## Roadmap
 

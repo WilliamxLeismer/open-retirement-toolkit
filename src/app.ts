@@ -89,8 +89,29 @@ export class App {
             <div class="field-grid">${fields.map(field => {
               const raw = this.scenario[field.key] as number;
               const value = field.type==="percent" ? raw*100 : raw;
-              return `<label><span>${field.label}</span><input data-field="${field.key}" data-percent="${field.type==="percent"}" type="number" step="${field.step??"any"}" value="${value}"/></label>`;
+              const disabledByTaxBuckets = this.scenario.taxBuckets.enabled && (field.key === "startingBalance" || field.key === "taxableWithdrawalShare");
+              return `<label><span>${field.label}</span><input data-field="${field.key}" data-percent="${field.type==="percent"}" type="number" step="${field.step??"any"}" value="${value}" ${disabledByTaxBuckets?"disabled":""}/></label>`;
             }).join("")}</div>
+            <fieldset class="model-box">
+              <legend>Tax-bucket withdrawals</legend>
+              <label class="toggle"><input id="tax-buckets-enabled" type="checkbox" ${this.scenario.taxBuckets.enabled?"checked":""}/> Track taxable, tax-deferred, and Roth accounts</label>
+              <div ${this.scenario.taxBuckets.enabled?"":"hidden"}>
+                <div class="field-grid">
+                  <label><span>Taxable balance</span><input type="number" min="0" step="1000" data-tax-balance="taxable" value="${this.scenario.taxBuckets.startingBalances.taxable}"/></label>
+                  <label><span>Tax-deferred balance</span><input type="number" min="0" step="1000" data-tax-balance="taxDeferred" value="${this.scenario.taxBuckets.startingBalances.taxDeferred}"/></label>
+                  <label><span>Roth balance</span><input type="number" min="0" step="1000" data-tax-balance="roth" value="${this.scenario.taxBuckets.startingBalances.roth}"/></label>
+                </div>
+                <p class="assumption">Starting portfolio: <strong id="tax-bucket-total">${money.format(this.scenario.startingBalance)}</strong></p>
+                <div class="field-grid">
+                  <label><span>Taxable contribution share</span><input type="number" min="0" max="100" step="1" data-tax-contribution="taxable" value="${this.scenario.taxBuckets.contributionShares.taxable*100}"/></label>
+                  <label><span>Tax-deferred contribution share</span><input type="number" min="0" max="100" step="1" data-tax-contribution="taxDeferred" value="${this.scenario.taxBuckets.contributionShares.taxDeferred*100}"/></label>
+                  <label><span>Roth contribution share</span><input type="number" min="0" max="100" step="1" data-tax-contribution="roth" value="${this.scenario.taxBuckets.contributionShares.roth*100}"/></label>
+                  <label><span>Fixed withdrawal order</span><select id="withdrawal-order"><option value="taxable-first" ${this.scenario.taxBuckets.withdrawalOrder==="taxable-first"?"selected":""}>Taxable → deferred → Roth</option><option value="tax-deferred-first" ${this.scenario.taxBuckets.withdrawalOrder==="tax-deferred-first"?"selected":""}>Deferred → taxable → Roth</option><option value="roth-first" ${this.scenario.taxBuckets.withdrawalOrder==="roth-first"?"selected":""}>Roth → taxable → deferred</option></select></label>
+                  <label><span>Taxable account gain share</span><input id="taxable-gain-share" type="number" min="0" max="100" step="1" value="${this.scenario.taxBuckets.taxableGainShare*100}"/></label>
+                </div>
+                <p class="assumption">Simplified model: the effective tax rate applies to all tax-deferred withdrawals and the gain share of taxable withdrawals. Roth withdrawals are untaxed. Tax brackets, RMDs, Roth conversions, and account-specific returns are not modeled.</p>
+              </div>
+            </fieldset>
             <fieldset class="model-box" ${this.scenario.model==="historical"?"":"hidden"}>
               <legend>Historical moving-block bootstrap</legend>
               <div class="historical-summary">${this.scenario.historical.rows.length
@@ -177,6 +198,39 @@ export class App {
     });
     this.root.querySelector<HTMLSelectElement>("#student-df")?.addEventListener("change", e => {
       this.scenario.studentT.degreesOfFreedom = Number((e.target as HTMLSelectElement).value) as 3 | 5 | 8 | 30;
+      this.changed();
+    });
+    this.root.querySelector<HTMLInputElement>("#tax-buckets-enabled")?.addEventListener("change", e => {
+      this.scenario.taxBuckets.enabled = (e.target as HTMLInputElement).checked;
+      if (this.scenario.taxBuckets.enabled) {
+        this.scenario.taxBuckets.startingBalances = {
+          taxable: this.scenario.startingBalance * 0.3,
+          taxDeferred: this.scenario.startingBalance * 0.6,
+          roth: this.scenario.startingBalance * 0.1
+        };
+      }
+      this.render();
+      this.changed();
+    });
+    this.root.querySelectorAll<HTMLInputElement>("[data-tax-balance]").forEach(input => input.addEventListener("input", () => {
+      const bucket = input.dataset.taxBalance as keyof typeof this.scenario.taxBuckets.startingBalances;
+      this.scenario.taxBuckets.startingBalances[bucket] = Number(input.value);
+      this.scenario.startingBalance = Object.values(this.scenario.taxBuckets.startingBalances).reduce((sum, value) => sum + value, 0);
+      const total = this.root.querySelector("#tax-bucket-total");
+      if (total) total.textContent = money.format(this.scenario.startingBalance);
+      this.changed();
+    }));
+    this.root.querySelectorAll<HTMLInputElement>("[data-tax-contribution]").forEach(input => input.addEventListener("input", () => {
+      const bucket = input.dataset.taxContribution as keyof typeof this.scenario.taxBuckets.contributionShares;
+      this.scenario.taxBuckets.contributionShares[bucket] = Number(input.value) / 100;
+      this.changed();
+    }));
+    this.root.querySelector<HTMLSelectElement>("#withdrawal-order")?.addEventListener("change", e => {
+      this.scenario.taxBuckets.withdrawalOrder = (e.target as HTMLSelectElement).value as typeof this.scenario.taxBuckets.withdrawalOrder;
+      this.changed();
+    });
+    this.root.querySelector<HTMLInputElement>("#taxable-gain-share")?.addEventListener("input", e => {
+      this.scenario.taxBuckets.taxableGainShare = Number((e.target as HTMLInputElement).value) / 100;
       this.changed();
     });
     this.root.querySelector<HTMLInputElement>("#historical-import")?.addEventListener("change", e => this.importHistorical((e.target as HTMLInputElement).files?.[0]));
@@ -306,12 +360,13 @@ export class App {
     const cashFlowMarkup = this.scenario.incomeStreams.length || this.scenario.oneTimeExpenses.length
       ? `<p class="assumption">Timeline includes ${this.scenario.incomeStreams.length} named income stream(s) and ${this.scenario.oneTimeExpenses.length} one-time expense(s).</p>`
       : "";
+    const taxBucketMarkup = result.taxBuckets ? `<section class="stress-comparison"><h3>Tax-bucket results</h3><p>Fixed ${escapeHtml(this.scenario.taxBuckets.withdrawalOrder)} ordering with one effective tax rate. Bucket amounts below remain nominal even when the main chart uses today's dollars. Estimated taxes are model outputs, not tax advice.</p><div class="depletion-metrics"><div><span>Median nominal taxable ending</span><strong>${money.format(result.taxBuckets.endingMedianBalances.taxable)}</strong></div><div><span>Median nominal deferred ending</span><strong>${money.format(result.taxBuckets.endingMedianBalances.taxDeferred)}</strong></div><div><span>Median nominal Roth ending</span><strong>${money.format(result.taxBuckets.endingMedianBalances.roth)}</strong></div><div><span>Median estimated nominal lifetime tax</span><strong>${money.format(result.taxBuckets.medianEstimatedLifetimeTax)}</strong></div></div></section>` : "";
     const medianDepletion = result.depletion.medianDepletionAge === null ? "None" : result.depletion.medianDepletionAge.toFixed(1);
     const depletionRows = result.depletion.byAge.map(point=>`<tr><td>${point.age}</td><td>${point.trials.toLocaleString()}</td><td>${pct.format(point.rate)}</td></tr>`).join("");
     return `<div class="metrics"><div><span>Funds last through plan</span><strong>${pct.format(result.successRate)}</strong></div><div><span>Median ending balance</span><strong>${money.format(viewedResult.endingMedian)}</strong></div><div><span>Model runs</span><strong>${result.trials.toLocaleString()}</strong></div></div>
       <div class="depletion-metrics"><div><span>Ever depleted</span><strong>${pct.format(result.depletion.depletionRate)}</strong></div><div><span>Median first-depletion age</span><strong>${medianDepletion}</strong></div><div><span>By retirement</span><strong>${pct.format(result.depletion.beforeRetirementRate)}</strong></div><div><span>First 10 retirement years</span><strong>${pct.format(result.depletion.firstTenRetirementYearsRate)}</strong></div><div><span>Later retirement</span><strong>${pct.format(result.depletion.laterRetirementRate)}</strong></div></div>
       <p class="assumption">Showing ${this.scenario.dollarView==="real"?"today's dollars using each trial's inflation path":"nominal dollars"}. ${escapeHtml(manifest.label)} (${escapeHtml(manifest.id)}). ${escapeHtml(manifest.warning)}${provenance} Engine ${result.engineVersion}. It is not a promise or probability about the real world.</p>
-      ${cashFlowMarkup}${stressMarkup}${modelMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
+      ${cashFlowMarkup}${taxBucketMarkup}${stressMarkup}${modelMarkup}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Projected portfolio percentiles by age">
         <line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="axis"/>
         <path d="${path("p90")}" class="line high"/><path d="${path("p50")}" class="line median"/><path d="${path("p10")}" class="line low"/>
         <text x="${pad}" y="${height-8}">Age ${viewedResult.points[0].age}</text><text x="${width-pad}" y="${height-8}" text-anchor="end">Age ${viewedResult.points.at(-1)?.age}</text>
@@ -331,7 +386,7 @@ export class App {
     await this.run();
   }
   private async createNew() { const s=defaultScenario(); await saveScenario(s); await this.refresh(s); }
-  private async duplicate() { const s={...this.scenario,id:crypto.randomUUID(),name:this.scenario.name+" copy",updatedAt:new Date().toISOString()}; await saveScenario(s); await this.refresh(s); }
+  private async duplicate() { const s={...structuredClone(this.scenario),id:crypto.randomUUID(),name:this.scenario.name+" copy",updatedAt:new Date().toISOString()}; await saveScenario(s); await this.refresh(s); }
   private async load(id:string) { const s=this.scenarios.find(item=>item.id===id); if(s) await this.refresh(s); }
   private async remove() {
     if (!confirm(`Delete "${this.scenario.name}" from this device?`)) return;

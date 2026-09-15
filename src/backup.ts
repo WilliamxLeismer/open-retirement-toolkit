@@ -42,7 +42,7 @@ export type BackupHealth = "missing" | "current" | "due";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const checksumInput = (exportedAt: string, scenarios: Scenario[]) =>
+const checksumInput = (exportedAt: string, scenarios: unknown[]) =>
   JSON.stringify({ version: CURRENT_BACKUP_VERSION, exportedAt, scenarios });
 
 const bytesToBase64 = (bytes: Uint8Array): string => {
@@ -173,20 +173,20 @@ export async function decryptAndVerifyBackup(input: unknown, passphrase: string)
 
 export async function verifyAndMigrateBackup(input: unknown): Promise<Scenario[]> {
   if (!isRecord(input)) throw new Error("Backup must be an object.");
-  const scenarios = migrateBackup(input);
-  if (input.version !== CURRENT_BACKUP_VERSION) return scenarios;
+  if (input.version !== CURRENT_BACKUP_VERSION) return migrateBackup(input);
   if (typeof input.exportedAt !== "string" || !input.exportedAt || !isRecord(input.manifest)) {
     throw new Error("Backup integrity information is missing.");
   }
   const manifest = input.manifest;
+  const rawScenarios = Array.isArray(input.scenarios) ? input.scenarios : [];
   if (manifest.format !== BACKUP_FORMAT || manifest.checksumAlgorithm !== BACKUP_CHECKSUM_ALGORITHM) {
     throw new Error("Backup format or checksum algorithm is unsupported.");
   }
-  if (manifest.scenarioCount !== scenarios.length) throw new Error("Backup scenario count does not match its manifest.");
+  if (manifest.scenarioCount !== rawScenarios.length) throw new Error("Backup scenario count does not match its manifest.");
   if (typeof manifest.checksum !== "string") throw new Error("Backup checksum is missing.");
-  const checksum = await sha256Hex(checksumInput(input.exportedAt, scenarios));
+  const checksum = await sha256Hex(checksumInput(input.exportedAt, rawScenarios));
   if (checksum !== manifest.checksum) throw new Error("Backup checksum failed. The file may be incomplete or modified.");
-  return scenarios;
+  return migrateBackup(input);
 }
 
 export function getBackupHealth(lastExportAt: string | null, now = new Date(), dueAfterDays = 30): BackupHealth {

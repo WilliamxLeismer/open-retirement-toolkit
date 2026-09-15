@@ -26,7 +26,7 @@ describe("simulate", () => {
       endingMedian: 109907.9427454746,
       trials: 100,
       seed: 42,
-      engineVersion: "1.5.0",
+      engineVersion: "1.6.0",
       modelId: "normal-v1",
       depletion: {
         depletionRate: 0,
@@ -52,6 +52,39 @@ describe("simulate", () => {
   it("repeats seeded normal simulations exactly", () => {
     const input = makeScenario({ model: "normal", expectedReturn: 0.05, volatility: 0.12 });
     expect(simulate(input)).toEqual(simulate(input));
+  });
+
+  it("preserves zero-tax totals when tax-bucket accounting is enabled", () => {
+    const scenario = makeScenario({
+      taxBuckets: {
+        enabled: true,
+        startingBalances: { taxable: 30000, taxDeferred: 60000, roth: 10000 },
+        contributionShares: { taxable: 0.25, taxDeferred: 0.5, roth: 0.25 },
+        withdrawalOrder: "taxable-first",
+        taxableGainShare: 0.5
+      }
+    });
+    const result = simulate(scenario);
+    expect(result.points.map(point => point.p50)).toEqual([100000, 112000, 100000]);
+    expect(result.taxBuckets?.medianEstimatedLifetimeTax).toBe(0);
+    expect(Object.values(result.taxBuckets!.endingMedianBalances).reduce((sum, value) => sum + value, 0)).toBe(100000);
+  });
+
+  it("tracks gross tax-deferred withdrawals and estimated taxes", () => {
+    const result = simulate(makeScenario({
+      annualContribution: 0,
+      effectiveTaxRate: 0.2,
+      taxBuckets: {
+        enabled: true,
+        startingBalances: { taxable: 0, taxDeferred: 100000, roth: 0 },
+        contributionShares: { taxable: 0, taxDeferred: 1, roth: 0 },
+        withdrawalOrder: "tax-deferred-first",
+        taxableGainShare: 0.5
+      }
+    }));
+    expect(result.endingMedian).toBeCloseTo(85000, 8);
+    expect(result.taxBuckets?.endingMedianBalances.taxDeferred).toBeCloseTo(85000, 8);
+    expect(result.taxBuckets?.medianEstimatedLifetimeTax).toBeCloseTo(3000, 8);
   });
 
   it("rejects an invalid age horizon", () => {

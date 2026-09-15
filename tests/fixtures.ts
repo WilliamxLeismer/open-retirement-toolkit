@@ -24,6 +24,13 @@ export const makeScenario = (overrides: Partial<Scenario> = {}): Scenario => ({
   studentT: { degreesOfFreedom: 5 },
   incomeStreams: [],
   oneTimeExpenses: [],
+  taxBuckets: {
+    enabled: false,
+    startingBalances: { taxable: 30000, taxDeferred: 60000, roth: 10000 },
+    contributionShares: { taxable: 0.25, taxDeferred: 0.5, roth: 0.25 },
+    withdrawalOrder: "taxable-first",
+    taxableGainShare: 0.5
+  },
   dollarView: "nominal",
   updatedAt: "2026-01-01T00:00:00.000Z",
   ...overrides

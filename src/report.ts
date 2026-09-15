@@ -27,6 +27,7 @@ export function buildResultCsv(
     row("input","stress_age","","","","",scenario.stress.age),
     row("input","stress_loss","","","","",scenario.stress.loss),
     row("input","dollar_view","","","","",scenario.dollarView),
+    row("input","tax_buckets_enabled","","","","",scenario.taxBuckets.enabled),
     row("summary","stressed_success_rate","","","","",stressed.successRate),
     row("summary","stressed_ending_median","","","","",stressed.endingMedian),
     row("summary","depletion_rate","","","","",stressed.depletion.depletionRate),
@@ -35,6 +36,23 @@ export function buildResultCsv(
     row("summary","depletion_first_ten_retirement_years_rate","","","","",stressed.depletion.firstTenRetirementYearsRate),
     row("summary","depletion_later_retirement_rate","","","","",stressed.depletion.laterRetirementRate)
   ];
+  if (scenario.taxBuckets.enabled && stressed.taxBuckets) {
+    rows.push(
+      row("input","withdrawal_order","","","","",scenario.taxBuckets.withdrawalOrder),
+      row("input","taxable_gain_share","","","","",scenario.taxBuckets.taxableGainShare),
+      row("input","starting_taxable_balance","","","","",scenario.taxBuckets.startingBalances.taxable),
+      row("input","starting_tax_deferred_balance","","","","",scenario.taxBuckets.startingBalances.taxDeferred),
+      row("input","starting_roth_balance","","","","",scenario.taxBuckets.startingBalances.roth),
+      row("input","taxable_contribution_share","","","","",scenario.taxBuckets.contributionShares.taxable),
+      row("input","tax_deferred_contribution_share","","","","",scenario.taxBuckets.contributionShares.taxDeferred),
+      row("input","roth_contribution_share","","","","",scenario.taxBuckets.contributionShares.roth),
+      row("summary","ending_median_taxable_balance","","","","",stressed.taxBuckets.endingMedianBalances.taxable),
+      row("summary","ending_median_tax_deferred_balance","","","","",stressed.taxBuckets.endingMedianBalances.taxDeferred),
+      row("summary","ending_median_roth_balance","","","","",stressed.taxBuckets.endingMedianBalances.roth),
+      row("summary","median_estimated_nominal_lifetime_tax","","","","",stressed.taxBuckets.medianEstimatedLifetimeTax),
+      row("warning","tax_model_limit","","","","","Uses a fixed effective tax rate and fixed withdrawal order; it does not model tax brackets, RMDs, conversions, or account-specific investment returns.")
+    );
+  }
   if (scenario.model === "historical") {
     rows.splice(9, 0,
       row("manifest","dataset_name","","","","",scenario.historical.datasetName),

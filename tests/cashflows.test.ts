@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monthlyNetIncome, oneTimeWithdrawalForMonth, retirementWithdrawalForMonth } from "../src/engine/cashflows";
+import { monthlyNetIncome, oneTimeNetNeedForMonth, oneTimeWithdrawalForMonth, retirementNetNeedForMonth, retirementWithdrawalForMonth } from "../src/engine/cashflows";
 import { simulate } from "../src/engine/simulate";
 import { validateScenario } from "../src/domain";
 import { makeScenario } from "./fixtures";
@@ -24,6 +24,7 @@ describe("cash-flow timeline", () => {
       incomeStreams: [{ ...income, startAge: 61, endAge: 62, annualGrowthRate: 0 }]
     });
     expect(retirementWithdrawalForMonth(scenario, 61, 1)).toBeCloseTo((1000 - 900) / 0.9, 12);
+    expect(retirementNetNeedForMonth(scenario, 61, 1)).toBeCloseTo(100, 12);
   });
 
   it("applies one-time expenses only at the selected age and optionally inflates them", () => {
@@ -34,6 +35,7 @@ describe("cash-flow timeline", () => {
     });
     expect(oneTimeWithdrawalForMonth(scenario, 11, 1.1)).toBe(0);
     expect(oneTimeWithdrawalForMonth(scenario, 12, 1.1)).toBeCloseTo(11000 / 0.9, 12);
+    expect(oneTimeNetNeedForMonth(scenario, 12, 1.1)).toBeCloseTo(11000, 12);
     expect(oneTimeWithdrawalForMonth(scenario, 13, 1.1)).toBe(0);
   });
 
