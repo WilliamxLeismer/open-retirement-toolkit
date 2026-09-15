@@ -9,7 +9,7 @@ export default defineConfig(({ command }) => ({
         "src/analysis.ts", "src/backup.ts", "src/domain.ts", "src/recovery.ts",
         "src/report.ts", "src/scenario-schema.ts", "src/storage.ts", "src/engine/**/*.ts"
       ],
-      thresholds: { statements: 85, branches: 75, functions: 85, lines: 85 }
+      thresholds: { statements: 90, branches: 85, functions: 90, lines: 90 }
     }
   }
 }));

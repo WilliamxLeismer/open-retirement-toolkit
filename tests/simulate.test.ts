@@ -72,6 +72,7 @@ describe("simulate", () => {
 
   it("tracks gross tax-deferred withdrawals and estimated taxes", () => {
     const result = simulate(makeScenario({
+      model: "normal",
       annualContribution: 0,
       effectiveTaxRate: 0.2,
       taxBuckets: {
