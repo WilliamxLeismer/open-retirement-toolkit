@@ -89,7 +89,7 @@ Tax-bucket mode tracks taxable, tax-deferred, and Roth balances under one portfo
 
 ## Roadmap
 
-Later candidates include tax-bucket withdrawal ordering, asset-level allocation and rebalancing, Social Security claiming comparisons, Roth conversions, and spending guardrails.
+Later candidates include asset-level allocation and rebalancing, Social Security claiming comparisons, Roth conversions, and spending guardrails.
 
 ## License
 
