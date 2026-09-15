@@ -1,11 +1,11 @@
 import { compareSimulationResults, resultInDollarView } from "./analysis";
+import { createBackup, getBackupHealth, verifyAndMigrateBackup } from "./backup";
 import { defaultScenario, validateScenario, type Scenario, type SimulationResult } from "./domain";
 import { withoutStress } from "./engine/stress";
 import { parseHistoricalCsv } from "./engine/historical";
 import { getModelManifest } from "./engine/model-manifest";
 import { buildResultCsv } from "./report";
-import { CURRENT_BACKUP_VERSION, migrateBackup } from "./scenario-schema";
-import { deleteScenario, listScenarios, saveScenario } from "./storage";
+import { deleteScenario, listRecoveryPoints, listScenarios, saveRecoveryPoint, saveScenario } from "./storage";
 
 type Field = { key: keyof Scenario; label: string; type?: "percent"; step?: string; help?: string };
 const fields: Field[] = [
@@ -27,6 +27,7 @@ const fields: Field[] = [
 const money = new Intl.NumberFormat(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0});
 const pct = new Intl.NumberFormat(undefined,{style:"percent",maximumFractionDigits:1});
 const escapeHtml = (value: unknown) => String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
+const LAST_BACKUP_KEY = "open-retirement-toolkit:last-file-backup";
 
 export class App {
   private scenario = defaultScenario();
@@ -36,10 +37,12 @@ export class App {
   private modelBaselineResult?: SimulationResult;
   private saveTimer?: number;
   private runNumber = 0;
+  private storagePersisted = false;
 
   constructor(private root: HTMLElement) {}
 
   async start() {
+    this.storagePersisted = await navigator.storage?.persisted?.().catch(() => false) ?? false;
     this.scenarios = await listScenarios();
     if (this.scenarios[0]) this.scenario = this.scenarios[0];
     else await saveScenario(this.scenario);
@@ -49,6 +52,8 @@ export class App {
 
   private render() {
     const errors = validateScenario(this.scenario);
+    const backupHealth = getBackupHealth(localStorage.getItem(LAST_BACKUP_KEY));
+    const backupState = backupHealth === "current" ? "File backup current" : backupHealth === "due" ? "File backup over 30 days old" : "No file backup yet";
     this.root.innerHTML = `
       <header class="topbar">
         <div><span class="eyebrow">Private by design</span><h1>Open Retirement Toolkit</h1></div>
@@ -67,9 +72,12 @@ export class App {
           </div>
           <hr/>
           <div class="button-stack">
-            <button id="export">Export backup</button>
+            <button id="export">Export verified backup</button>
             <label class="button-label">Import backup<input id="import" type="file" accept="application/json"/></label>
+            <button id="restore">Restore previous local save</button>
+            <button id="persist-storage" ${this.storagePersisted?"disabled":""}>${this.storagePersisted?"Browser storage protected":"Protect browser storage"}</button>
           </div>
+          <p id="backup-state" class="backup-state ${backupHealth}">${backupState}</p>
           <p class="privacy-note">No account. No analytics. Financial data stays in this browser unless you export it.</p>
         </aside>
         <main>
@@ -208,6 +216,8 @@ export class App {
     this.root.querySelector("#delete")?.addEventListener("click", () => this.remove());
     this.root.querySelector("#export")?.addEventListener("click", () => this.exportBackup());
     this.root.querySelector<HTMLInputElement>("#import")?.addEventListener("change", e => this.importBackup((e.target as HTMLInputElement).files?.[0]));
+    this.root.querySelector("#restore")?.addEventListener("click", () => this.restorePreviousSave());
+    this.root.querySelector("#persist-storage")?.addEventListener("click", () => this.requestPersistentStorage());
     this.root.querySelector("#csv")?.addEventListener("click", () => this.exportCsv());
     this.root.querySelector("#print")?.addEventListener("click", () => window.print());
     this.root.querySelector<HTMLSelectElement>("#dollar-view")?.addEventListener("change", e => {
@@ -333,14 +343,41 @@ export class App {
     const url=URL.createObjectURL(new Blob([content],{type}));
     const a=document.createElement("a"); a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url);
   }
-  private exportBackup() { this.download("open-retirement-toolkit-backup.json",JSON.stringify({version:CURRENT_BACKUP_VERSION,exportedAt:new Date().toISOString(),scenarios:this.scenarios},null,2),"application/json"); }
+  private async exportBackup() {
+    window.clearTimeout(this.saveTimer);
+    await saveScenario(this.scenario);
+    this.scenarios = await listScenarios();
+    const backup = await createBackup(this.scenarios);
+    this.download("open-retirement-toolkit-backup.json", JSON.stringify(backup, null, 2), "application/json");
+    localStorage.setItem(LAST_BACKUP_KEY, backup.exportedAt);
+    const state = this.root.querySelector("#backup-state");
+    if (state) { state.textContent = "File backup current"; state.className = "backup-state current"; }
+  }
   private async importBackup(file?:File) {
     if(!file) return;
     try {
-      const items=migrateBackup(JSON.parse(await file.text()));
+      const items=await verifyAndMigrateBackup(JSON.parse(await file.text()));
       for(const item of items) await saveScenario({...item,updatedAt:new Date().toISOString()});
       await this.refresh(items[0]);
     } catch(error) { alert(error instanceof Error?error.message:"Could not import backup."); }
+  }
+  private async restorePreviousSave() {
+    const points = await listRecoveryPoints(this.scenario.id);
+    const latest = points[0];
+    if (!latest) { alert("No earlier local save is available for this scenario yet."); return; }
+    const savedAt = new Date(latest.savedAt).toLocaleString();
+    if (!confirm(`Restore the local save from ${savedAt}? Your current version will remain available as a recovery point.`)) return;
+    const restored = { ...latest.scenario, updatedAt: new Date().toISOString() };
+    await saveRecoveryPoint(this.scenario);
+    await saveScenario(restored);
+    await this.refresh(restored);
+  }
+  private async requestPersistentStorage() {
+    if (!navigator.storage?.persist) { alert("This browser does not offer persistent-storage requests."); return; }
+    this.storagePersisted = await navigator.storage.persist();
+    const button = this.root.querySelector<HTMLButtonElement>("#persist-storage");
+    if (button && this.storagePersisted) { button.disabled = true; button.textContent = "Browser storage protected"; }
+    if (!this.storagePersisted) alert("The browser did not grant persistent storage. Keep exporting backup files periodically.");
   }
   private exportCsv() {
     if(!this.result)return;

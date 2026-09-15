@@ -15,7 +15,7 @@ This project is an independent open-source toolkit inspired by the need for tran
 - Nominal and per-trial inflation-adjusted views
 - First-depletion rates, median age, timing bands, and age distribution
 - Named scenarios, autosave, duplication, comparison, and deletion
-- JSON backup import/export, CSV export, and printable reports
+- Checksummed JSON backup import/export, local recovery points, backup-age warnings, CSV export, and printable reports
 - IndexedDB persistence, installable PWA shell, and offline caching
 - No authentication, telemetry, or third-party runtime services
 
@@ -80,7 +80,7 @@ Student's t is an advanced portfolio-wide model with 3, 5, 8, and 30 degree-of-f
 
 ## Roadmap
 
-Later candidates include Laplace, historical IID bootstrap, asset-level allocation, richer income timelines, depletion analysis, real-dollar views, and stronger backup workflows.
+Later candidates include tax-bucket withdrawal ordering, asset-level allocation and rebalancing, Social Security claiming comparisons, Roth conversions, and spending guardrails.
 
 ## License
 
