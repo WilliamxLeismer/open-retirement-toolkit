@@ -1,6 +1,6 @@
 import { CURRENT_SCENARIO_VERSION, defaultScenario, validateScenario, type Scenario } from "./domain";
 
-export const CURRENT_BACKUP_VERSION = 7 as const;
+export const CURRENT_BACKUP_VERSION = 8 as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

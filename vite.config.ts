@@ -5,7 +5,10 @@ export default defineConfig(({ command }) => ({
   test: {
     coverage: {
       provider: "v8",
-      include: ["src/domain.ts", "src/scenario-schema.ts", "src/analysis.ts", "src/report.ts", "src/engine/**/*.ts"],
+      include: [
+        "src/analysis.ts", "src/backup.ts", "src/domain.ts", "src/recovery.ts",
+        "src/report.ts", "src/scenario-schema.ts", "src/storage.ts", "src/engine/**/*.ts"
+      ],
       thresholds: { statements: 85, branches: 75, functions: 85, lines: 85 }
     }
   }
