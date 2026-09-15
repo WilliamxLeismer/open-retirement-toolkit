@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { createBackup, getBackupHealth, verifyAndMigrateBackup } from "../src/backup";
+import {
+  BACKUP_ENCRYPTION_ALGORITHM,
+  BACKUP_KEY_DERIVATION,
+  BACKUP_KEY_ITERATIONS,
+  createBackup,
+  createEncryptedBackup,
+  decryptAndVerifyBackup,
+  ENCRYPTED_BACKUP_FORMAT,
+  getBackupHealth,
+  isEncryptedBackup,
+  verifyAndMigrateBackup
+} from "../src/backup";
 import { CURRENT_BACKUP_VERSION } from "../src/scenario-schema";
 import { makeScenario } from "./fixtures";
 
@@ -44,5 +55,53 @@ describe("verified backups", () => {
     expect(getBackupHealth("not-a-date", now)).toBe("missing");
     expect(getBackupHealth("2026-09-01T12:00:00.000Z", now)).toBe("current");
     expect(getBackupHealth("2026-07-01T12:00:00.000Z", now)).toBe("due");
+  });
+});
+
+describe("encrypted backups", () => {
+  const passphrase = "correct horse battery staple";
+
+  it("round-trips a verified backup without exposing scenario content", async () => {
+    const scenario = makeScenario({ name: "Private plan" });
+    const backup = await createEncryptedBackup([scenario], passphrase, "2026-09-15T12:00:00.000Z");
+    expect(backup.format).toBe(ENCRYPTED_BACKUP_FORMAT);
+    expect(backup.encryption).toMatchObject({
+      algorithm: BACKUP_ENCRYPTION_ALGORITHM,
+      keyDerivation: BACKUP_KEY_DERIVATION,
+      iterations: BACKUP_KEY_ITERATIONS
+    });
+    expect(backup.encryption.salt).not.toBe(backup.encryption.iv);
+    expect(JSON.stringify(backup)).not.toContain("Private plan");
+    expect(isEncryptedBackup(backup)).toBe(true);
+    await expect(decryptAndVerifyBackup(backup, passphrase)).resolves.toEqual([scenario]);
+  });
+
+  it("uses fresh cryptographic values for every export", async () => {
+    const scenario = makeScenario();
+    const first = await createEncryptedBackup([scenario], passphrase);
+    const second = await createEncryptedBackup([scenario], passphrase);
+    expect(first.encryption.salt).not.toBe(second.encryption.salt);
+    expect(first.encryption.iv).not.toBe(second.encryption.iv);
+    expect(first.ciphertext).not.toBe(second.ciphertext);
+  });
+
+  it("rejects short passphrases", async () => {
+    await expect(createEncryptedBackup([makeScenario()], "too short")).rejects.toThrow("at least 12 characters");
+  });
+
+  it("rejects an incorrect passphrase and modified ciphertext", async () => {
+    const backup = await createEncryptedBackup([makeScenario()], passphrase);
+    await expect(decryptAndVerifyBackup(backup, "incorrect passphrase")).rejects.toThrow("Could not decrypt");
+    const replacement = backup.ciphertext.endsWith("A") ? "B" : "A";
+    const modified = { ...backup, ciphertext: backup.ciphertext.slice(0, -1) + replacement };
+    await expect(decryptAndVerifyBackup(modified, passphrase)).rejects.toThrow();
+  });
+
+  it("rejects unsupported or malformed encrypted envelopes before key derivation", async () => {
+    await expect(decryptAndVerifyBackup({}, passphrase)).rejects.toThrow("not an encrypted");
+    await expect(decryptAndVerifyBackup({ format: ENCRYPTED_BACKUP_FORMAT, version: 2 }, passphrase)).rejects.toThrow("version is unsupported");
+    const backup = await createEncryptedBackup([makeScenario()], passphrase);
+    await expect(decryptAndVerifyBackup({ ...backup, encryption: { ...backup.encryption, algorithm: "AES-CBC" } }, passphrase)).rejects.toThrow("settings are unsupported");
+    await expect(decryptAndVerifyBackup({ ...backup, ciphertext: "not base64" }, passphrase)).rejects.toThrow("ciphertext is invalid");
   });
 });

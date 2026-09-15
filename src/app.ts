@@ -1,5 +1,5 @@
 import { compareSimulationResults, resultInDollarView } from "./analysis";
-import { createBackup, getBackupHealth, verifyAndMigrateBackup } from "./backup";
+import { createBackup, createEncryptedBackup, decryptAndVerifyBackup, getBackupHealth, isEncryptedBackup, verifyAndMigrateBackup } from "./backup";
 import { defaultScenario, validateScenario, type Scenario, type SimulationResult } from "./domain";
 import { withoutStress } from "./engine/stress";
 import { parseHistoricalCsv } from "./engine/historical";
@@ -73,6 +73,7 @@ export class App {
           <hr/>
           <div class="button-stack">
             <button id="export">Export verified backup</button>
+            <button id="export-encrypted">Export encrypted backup</button>
             <label class="button-label">Import backup<input id="import" type="file" accept="application/json"/></label>
             <button id="restore">Restore previous local save</button>
             <button id="persist-storage" ${this.storagePersisted?"disabled":""}>${this.storagePersisted?"Browser storage protected":"Protect browser storage"}</button>
@@ -215,6 +216,7 @@ export class App {
     this.root.querySelector("#duplicate")?.addEventListener("click", () => this.duplicate());
     this.root.querySelector("#delete")?.addEventListener("click", () => this.remove());
     this.root.querySelector("#export")?.addEventListener("click", () => this.exportBackup());
+    this.root.querySelector("#export-encrypted")?.addEventListener("click", () => this.exportEncryptedBackup());
     this.root.querySelector<HTMLInputElement>("#import")?.addEventListener("change", e => this.importBackup((e.target as HTMLInputElement).files?.[0]));
     this.root.querySelector("#restore")?.addEventListener("click", () => this.restorePreviousSave());
     this.root.querySelector("#persist-storage")?.addEventListener("click", () => this.requestPersistentStorage());
@@ -353,13 +355,66 @@ export class App {
     const state = this.root.querySelector("#backup-state");
     if (state) { state.textContent = "File backup current"; state.className = "backup-state current"; }
   }
+  private async exportEncryptedBackup() {
+    const passphrase = await this.requestBackupPassphrase(true);
+    if (passphrase === null) return;
+    try {
+      window.clearTimeout(this.saveTimer);
+      await saveScenario(this.scenario);
+      this.scenarios = await listScenarios();
+      const backup = await createEncryptedBackup(this.scenarios, passphrase);
+      this.download("open-retirement-toolkit-backup.encrypted.json", JSON.stringify(backup, null, 2), "application/json");
+      localStorage.setItem(LAST_BACKUP_KEY, backup.exportedAt);
+      const state = this.root.querySelector("#backup-state");
+      if (state) { state.textContent = "File backup current"; state.className = "backup-state current"; }
+    } catch (error) { alert(error instanceof Error ? error.message : "Could not create encrypted backup."); }
+  }
   private async importBackup(file?:File) {
     if(!file) return;
     try {
-      const items=await verifyAndMigrateBackup(JSON.parse(await file.text()));
+      const parsed = JSON.parse(await file.text()) as unknown;
+      let items: Scenario[];
+      if (isEncryptedBackup(parsed)) {
+        const passphrase = await this.requestBackupPassphrase(false);
+        if (passphrase === null) return;
+        items = await decryptAndVerifyBackup(parsed, passphrase);
+      } else {
+        items = await verifyAndMigrateBackup(parsed);
+      }
       for(const item of items) await saveScenario({...item,updatedAt:new Date().toISOString()});
       await this.refresh(items[0]);
     } catch(error) { alert(error instanceof Error?error.message:"Could not import backup."); }
+  }
+  private requestBackupPassphrase(confirmPassphrase: boolean): Promise<string | null> {
+    const dialog = document.createElement("dialog");
+    dialog.className = "passphrase-dialog";
+    dialog.innerHTML = `<form>
+      <h2>${confirmPassphrase ? "Encrypt backup" : "Decrypt backup"}</h2>
+      <p>${confirmPassphrase ? "Use at least 12 characters. This app cannot recover a forgotten passphrase." : "Enter the passphrase used when this backup was exported."}</p>
+      <label><span>Backup passphrase</span><input name="passphrase" type="password" autocomplete="off" required minlength="${confirmPassphrase ? 12 : 1}" autofocus/></label>
+      ${confirmPassphrase ? '<label><span>Confirm passphrase</span><input name="confirmation" type="password" autocomplete="off" required minlength="12"/></label>' : ""}
+      <p class="errors" hidden></p>
+      <div class="actions"><button type="button" data-cancel>Cancel</button><button type="submit" class="primary">${confirmPassphrase ? "Export encrypted file" : "Decrypt and import"}</button></div>
+    </form>`;
+    document.body.append(dialog);
+    return new Promise(resolve => {
+      const finish = (value: string | null) => { dialog.close(); dialog.remove(); resolve(value); };
+      dialog.querySelector("[data-cancel]")?.addEventListener("click", () => finish(null));
+      dialog.addEventListener("cancel", event => { event.preventDefault(); finish(null); });
+      dialog.querySelector("form")?.addEventListener("submit", event => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget as HTMLFormElement);
+        const passphrase = String(data.get("passphrase") ?? "");
+        const confirmation = String(data.get("confirmation") ?? "");
+        if (confirmPassphrase && passphrase !== confirmation) {
+          const error = dialog.querySelector<HTMLElement>(".errors");
+          if (error) { error.hidden = false; error.textContent = "Backup passphrases do not match."; }
+          return;
+        }
+        finish(passphrase);
+      });
+      dialog.showModal();
+    });
   }
   private async restorePreviousSave() {
     const points = await listRecoveryPoints(this.scenario.id);

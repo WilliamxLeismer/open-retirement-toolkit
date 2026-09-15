@@ -15,7 +15,7 @@ This project is an independent open-source toolkit inspired by the need for tran
 - Nominal and per-trial inflation-adjusted views
 - First-depletion rates, median age, timing bands, and age distribution
 - Named scenarios, autosave, duplication, comparison, and deletion
-- Checksummed JSON backup import/export, local recovery points, backup-age warnings, CSV export, and printable reports
+- Checksummed JSON backup import/export, optional password-encrypted backups, local recovery points, backup-age warnings, CSV export, and printable reports
 - IndexedDB persistence, installable PWA shell, and offline caching
 - No authentication, telemetry, or third-party runtime services
 
@@ -73,6 +73,10 @@ The included workflow tests and publishes `main` to GitHub Pages. In the reposit
 https://williamxleismer.github.io/open-retirement-toolkit/
 
 GitHub Pages hosts the application files. Financial scenarios remain in each user's browser storage.
+
+### Encrypted backups
+
+Encrypted exports use browser-native AES-256-GCM with a fresh random 16-byte salt and 12-byte initialization vector. The encryption key is derived locally from a passphrase using PBKDF2-HMAC-SHA-256 with 600,000 iterations. The passphrase is never stored or transmitted and cannot be recovered by the app. Unencrypted verified backups remain available for users who prefer portability over file encryption.
 
 ### Student's t calibration
 
