@@ -15,7 +15,7 @@ describe("CSV report", () => {
     const csv = buildResultCsv(scenario, stressed, baseline);
 
     expect(csv).toContain('manifest,scenario_name,,,,,"Plan, ""A"""');
-    expect(csv).toContain("manifest,engine_version,,,,,1.5.0");
+    expect(csv).toContain("manifest,engine_version,,,,,1.6.0");
     expect(csv).toContain("manifest,model_id,,,,,deterministic-v1");
     expect(csv).toContain("input,stress_enabled,,,,,true");
     expect(csv).toContain("input,stress_loss,,,,,-0.5");
@@ -67,5 +67,22 @@ describe("CSV report", () => {
     expect(csv).toContain('""name"":""Pension""');
     expect(csv).toContain("input,one_time_expense_1");
     expect(csv).toContain('""name"":""Medical""');
+  });
+
+  it("exports tax-bucket assumptions, results, and model limits", () => {
+    const scenario = makeScenario({
+      taxBuckets: {
+        enabled: true,
+        startingBalances: { taxable: 30000, taxDeferred: 60000, roth: 10000 },
+        contributionShares: { taxable: 0.25, taxDeferred: 0.5, roth: 0.25 },
+        withdrawalOrder: "taxable-first",
+        taxableGainShare: 0.5
+      }
+    });
+    const result = simulate(scenario);
+    const csv = buildResultCsv(scenario, result);
+    expect(csv).toContain("input,withdrawal_order,,,,,taxable-first");
+    expect(csv).toContain("summary,median_estimated_nominal_lifetime_tax");
+    expect(csv).toContain("warning,tax_model_limit");
   });
 });

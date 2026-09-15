@@ -33,6 +33,13 @@ describe("scenario migrations", () => {
       studentT: { degreesOfFreedom: 5 },
       incomeStreams: [],
       oneTimeExpenses: [],
+      taxBuckets: {
+        enabled: false,
+        startingBalances: { taxable: 75000, taxDeferred: 150000, roth: 25000 },
+        contributionShares: { taxable: 0.25, taxDeferred: 0.5, roth: 0.25 },
+        withdrawalOrder: "taxable-first",
+        taxableGainShare: 0.5
+      },
       dollarView: "nominal"
     });
   });
@@ -131,6 +138,34 @@ describe("scenario migrations", () => {
       incomeStreams: [],
       oneTimeExpenses: []
     })).toThrow("missing dollar-view");
+  });
+
+  it("upgrades a version-seven scenario with disabled tax buckets", () => {
+    const migrated = migrateScenario({
+      ...legacyScenario,
+      version: 7,
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
+      studentT: { degreesOfFreedom: 5 },
+      incomeStreams: [],
+      oneTimeExpenses: [],
+      dollarView: "nominal"
+    });
+    expect(migrated.taxBuckets.enabled).toBe(false);
+    expect(migrated.taxBuckets.startingBalances.taxDeferred).toBe(150000);
+  });
+
+  it("rejects a version-eight scenario without tax-bucket settings", () => {
+    expect(() => migrateScenario({
+      ...legacyScenario,
+      version: 8,
+      stress: { enabled: false, age: 65, loss: -0.35 },
+      historical: { blockMonths: 12, datasetName: "", datasetId: "", rows: [] },
+      studentT: { degreesOfFreedom: 5 },
+      incomeStreams: [],
+      oneTimeExpenses: [],
+      dollarView: "nominal"
+    })).toThrow("missing tax-bucket");
   });
 
   it("rejects empty and malformed backups", () => {

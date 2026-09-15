@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  BACKUP_CHECKSUM_ALGORITHM,
   BACKUP_ENCRYPTION_ALGORITHM,
+  BACKUP_FORMAT,
   BACKUP_KEY_DERIVATION,
   BACKUP_KEY_ITERATIONS,
   createBackup,
@@ -9,6 +11,7 @@ import {
   ENCRYPTED_BACKUP_FORMAT,
   getBackupHealth,
   isEncryptedBackup,
+  sha256Hex,
   verifyAndMigrateBackup
 } from "../src/backup";
 import { CURRENT_BACKUP_VERSION } from "../src/scenario-schema";
@@ -47,6 +50,22 @@ describe("verified backups", () => {
   it("continues importing pre-checksum backups", async () => {
     const scenario = makeScenario();
     await expect(verifyAndMigrateBackup({ version: 7, scenarios: [scenario] })).resolves.toEqual([scenario]);
+  });
+
+  it("verifies checksummed backups before migrating older scenarios", async () => {
+    const current = makeScenario();
+    const { taxBuckets: _taxBuckets, ...olderFields } = current;
+    const olderScenario = { ...olderFields, version: 7 };
+    const exportedAt = "2026-09-15T12:00:00.000Z";
+    const checksum = await sha256Hex(JSON.stringify({ version: CURRENT_BACKUP_VERSION, exportedAt, scenarios: [olderScenario] }));
+    const migrated = await verifyAndMigrateBackup({
+      version: CURRENT_BACKUP_VERSION,
+      exportedAt,
+      manifest: { format: BACKUP_FORMAT, scenarioCount: 1, checksumAlgorithm: BACKUP_CHECKSUM_ALGORITHM, checksum },
+      scenarios: [olderScenario]
+    });
+    expect(migrated[0].version).toBe(8);
+    expect(migrated[0].taxBuckets.enabled).toBe(false);
   });
 
   it("classifies backup age without relying on the current clock", () => {

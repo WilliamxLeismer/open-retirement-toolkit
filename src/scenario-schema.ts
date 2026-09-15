@@ -28,6 +28,7 @@ export function migrateScenario(input: unknown): Scenario {
   if (sourceVersion >= 5 && !("studentT" in input)) throw new Error("Scenario is missing Student's t settings.");
   if (sourceVersion >= 6 && (!("incomeStreams" in input) || !("oneTimeExpenses" in input))) throw new Error("Scenario is missing cash-flow timeline settings.");
   if (sourceVersion >= 7 && !("dollarView" in input)) throw new Error("Scenario is missing dollar-view settings.");
+  if (sourceVersion >= 8 && !("taxBuckets" in input)) throw new Error("Scenario is missing tax-bucket settings.");
 
   const defaults = defaultScenario();
   const migrated = {
@@ -40,6 +41,7 @@ export function migrateScenario(input: unknown): Scenario {
     incomeStreams: sourceVersion < 6 ? defaults.incomeStreams : input.incomeStreams,
     oneTimeExpenses: sourceVersion < 6 ? defaults.oneTimeExpenses : input.oneTimeExpenses,
     dollarView: sourceVersion < 7 ? defaults.dollarView : input.dollarView,
+    taxBuckets: sourceVersion < 8 ? defaults.taxBuckets : input.taxBuckets,
     id: typeof input.id === "string" && input.id ? input.id : defaults.id,
     updatedAt: typeof input.updatedAt === "string" && input.updatedAt ? input.updatedAt : defaults.updatedAt
   } as Scenario;
